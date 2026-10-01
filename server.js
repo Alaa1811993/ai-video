@@ -508,7 +508,7 @@ async function generateElevenLabsVoice(
 // RENDER ONE SCENE VIDEO
 // ============================================================
 
-function renderSceneVideo({
+/*function renderSceneVideo({
   imagePath,
   audioPath,
   outputPath,
@@ -658,7 +658,332 @@ function renderSceneVideo({
     }
   );
 }
+*/
+// ============================================================
+// RENDER ONE SCENE VIDEO WITH PHOTO ANIMATION
+// ============================================================
 
+function renderSceneVideo({
+  imagePath,
+  audioPath,
+  outputPath,
+  requestedDuration = 5,
+  animationIndex = 0,
+}) {
+  return new Promise(
+    async (resolve, reject) => {
+      try {
+        const audioMetadata =
+          await probeMedia(audioPath);
+
+        const audioStream =
+          audioMetadata.streams.find(
+            (stream) =>
+              stream.codec_type === "audio"
+          );
+
+        const audioDuration =
+          Number(
+            audioStream?.duration ||
+              audioMetadata.format?.duration ||
+              0
+          );
+
+        const requested =
+          Number(requestedDuration) || 5;
+
+        const duration =
+          Math.max(
+            0.5,
+            Math.min(
+              Math.max(
+                requested,
+                audioDuration
+              ),
+              MAX_VIDEO_SECONDS
+            )
+          );
+
+        console.log(
+          `Rendering animated scene. Duration: ${duration}s`
+        );
+
+        // ----------------------------------------------------
+        // ANIMATION TYPES
+        // ----------------------------------------------------
+        //
+        // 0 = Slow Zoom In
+        // 1 = Slow Zoom Out
+        // 2 = Pan Left -> Right
+        // 3 = Pan Right -> Left
+        // 4 = Pan Up -> Down
+        // 5 = Pan Down -> Up
+        // 6 = Zoom + Pan
+        //
+        // Every scene gets a different movement.
+        // ----------------------------------------------------
+
+        const animation =
+          Number(animationIndex) % 7;
+
+        const fps = 24;
+
+        // Extra-large canvas gives FFmpeg room
+        // to move the image smoothly.
+        const baseScale =
+          "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080";
+
+        let animationFilter = "";
+
+        if (animation === 0) {
+          // --------------------------------------------
+          // SLOW ZOOM IN
+          // --------------------------------------------
+
+          animationFilter =
+            `zoompan=` +
+            `z='min(zoom+0.0008,1.18)':` +
+            `x='iw/2-(iw/zoom/2)':` +
+            `y='ih/2-(ih/zoom/2)':` +
+            `d='${Math.ceil(duration * fps)}':` +
+            `s=1280x720:` +
+            `fps=${fps}`;
+        }
+
+        else if (animation === 1) {
+          // --------------------------------------------
+          // SLOW ZOOM OUT
+          // --------------------------------------------
+
+          animationFilter =
+            `zoompan=` +
+            `z='if(eq(on,1),1.18,max(1.0,zoom-0.0008))':` +
+            `x='iw/2-(iw/zoom/2)':` +
+            `y='ih/2-(ih/zoom/2)':` +
+            `d='${Math.ceil(duration * fps)}':` +
+            `s=1280x720:` +
+            `fps=${fps}`;
+        }
+
+        else if (animation === 2) {
+          // --------------------------------------------
+          // PAN LEFT -> RIGHT
+          // --------------------------------------------
+
+          animationFilter =
+            `zoompan=` +
+            `z='1.12':` +
+            `x='(iw-iw/zoom)*on/${Math.max(
+              1,
+              Math.ceil(duration * fps) - 1
+            )}':` +
+            `y='ih/2-(ih/zoom/2)':` +
+            `d='${Math.ceil(duration * fps)}':` +
+            `s=1280x720:` +
+            `fps=${fps}`;
+        }
+
+        else if (animation === 3) {
+          // --------------------------------------------
+          // PAN RIGHT -> LEFT
+          // --------------------------------------------
+
+          animationFilter =
+            `zoompan=` +
+            `z='1.12':` +
+            `x='(iw-iw/zoom)*(1-on/${Math.max(
+              1,
+              Math.ceil(duration * fps) - 1
+            )})':` +
+            `y='ih/2-(ih/zoom/2)':` +
+            `d='${Math.ceil(duration * fps)}':` +
+            `s=1280x720:` +
+            `fps=${fps}`;
+        }
+
+        else if (animation === 4) {
+          // --------------------------------------------
+          // PAN TOP -> BOTTOM
+          // --------------------------------------------
+
+          animationFilter =
+            `zoompan=` +
+            `z='1.12':` +
+            `x='iw/2-(iw/zoom/2)':` +
+            `y='(ih-ih/zoom)*on/${Math.max(
+              1,
+              Math.ceil(duration * fps) - 1
+            )}':` +
+            `d='${Math.ceil(duration * fps)}':` +
+            `s=1280x720:` +
+            `fps=${fps}`;
+        }
+
+        else if (animation === 5) {
+          // --------------------------------------------
+          // PAN BOTTOM -> TOP
+          // --------------------------------------------
+
+          animationFilter =
+            `zoompan=` +
+            `z='1.12':` +
+            `x='iw/2-(iw/zoom/2)':` +
+            `y='(ih-ih/zoom)*(1-on/${Math.max(
+              1,
+              Math.ceil(duration * fps) - 1
+            )})':` +
+            `d='${Math.ceil(duration * fps)}':` +
+            `s=1280x720:` +
+            `fps=${fps}`;
+        }
+
+        else {
+          // --------------------------------------------
+          // ZOOM + DIAGONAL MOVEMENT
+          // --------------------------------------------
+
+          animationFilter =
+            `zoompan=` +
+            `z='min(zoom+0.0007,1.15)':` +
+            `x='(iw-iw/zoom)*on/${Math.max(
+              1,
+              Math.ceil(duration * fps) - 1
+            )}':` +
+            `y='(ih-ih/zoom)*on/${Math.max(
+              1,
+              Math.ceil(duration * fps) - 1
+            )}':` +
+            `d='${Math.ceil(duration * fps)}':` +
+            `s=1280x720:` +
+            `fps=${fps}`;
+        }
+
+        console.log(
+          `Animation type: ${animation}`
+        );
+
+        const videoFilters = [
+          baseScale,
+          animationFilter,
+          "setsar=1",
+        ];
+
+        ffmpeg()
+          .input(imagePath)
+
+          // Keep image alive while zoompan
+          // creates the animation frames.
+          .inputOptions([
+            "-loop",
+            "1",
+          ])
+
+          .input(audioPath)
+
+          .videoFilters(
+            videoFilters
+          )
+
+          .videoCodec("libx264")
+
+          .outputOptions([
+            "-preset",
+            "ultrafast",
+
+            "-crf",
+            "28",
+
+            "-r",
+            String(fps),
+
+            "-pix_fmt",
+            "yuv420p",
+
+            "-c:a",
+            "aac",
+
+            "-b:a",
+            "128k",
+
+            "-shortest",
+
+            "-movflags",
+            "+faststart",
+
+            "-threads",
+            "1",
+          ])
+
+          .duration(duration)
+
+          .on(
+            "start",
+            (commandLine) => {
+              console.log(
+                "Animated Scene FFmpeg:",
+                commandLine
+              );
+            }
+          )
+
+          .on(
+            "progress",
+            (progress) => {
+              console.log(
+                `Animated Scene progress: ${
+                  progress.percent || 0
+                }%`
+              );
+            }
+          )
+
+          .on(
+            "stderr",
+            (stderrLine) => {
+              if (
+                stderrLine &&
+                stderrLine.trim()
+              ) {
+                console.log(
+                  "Animated Scene FFmpeg:",
+                  stderrLine
+                );
+              }
+            }
+          )
+
+          .on(
+            "error",
+            (error) => {
+              console.error(
+                "Animated Scene FFmpeg error:",
+                error
+              );
+
+              reject(error);
+            }
+          )
+
+          .on(
+            "end",
+            () => {
+              console.log(
+                "Animated scene completed:",
+                outputPath
+              );
+
+              resolve(outputPath);
+            }
+          )
+
+          .save(outputPath);
+
+      } catch (error) {
+        reject(error);
+      }
+    }
+  );
+}
 // ============================================================
 // CONCAT SCENE VIDEOS
 // ============================================================
@@ -1351,6 +1676,8 @@ async function generateFinalVideo(
         requestedDuration:
           scene.duration ||
           5,
+           animationIndex:
+    index,
       });
 
       sceneVideoPaths.push(
