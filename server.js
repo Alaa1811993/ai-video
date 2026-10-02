@@ -663,7 +663,7 @@ async function generateElevenLabsVoice(
 // RENDER ONE SCENE VIDEO WITH PHOTO ANIMATION
 // ============================================================
 
-function renderSceneVideo({
+/*function renderSceneVideo({
   imagePath,
   audioPath,
   outputPath,
@@ -983,6 +983,305 @@ function renderSceneVideo({
       }
     }
   );
+}*/
+// ============================================================
+// RENDER ONE SCENE VIDEO WITH STRONG PHOTO ANIMATION
+// ============================================================
+
+function renderSceneVideo({
+  imagePath,
+  audioPath,
+  outputPath,
+  requestedDuration = 5,
+  animationIndex = 0,
+}) {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const audioMetadata = await probeMedia(audioPath);
+
+      const audioStream = audioMetadata.streams.find(
+        (stream) => stream.codec_type === "audio"
+      );
+
+      const audioDuration = Number(
+        audioStream?.duration ||
+          audioMetadata.format?.duration ||
+          0
+      );
+
+      const requested = Number(requestedDuration) || 5;
+
+      const duration = Math.max(
+        0.5,
+        Math.min(
+          Math.max(requested, audioDuration),
+          MAX_VIDEO_SECONDS
+        )
+      );
+
+      const fps = 24;
+
+      const totalFrames = Math.max(
+        1,
+        Math.ceil(duration * fps)
+      );
+
+      const animation =
+        Number(animationIndex) % 7;
+
+      console.log(
+        `Rendering animated scene ${animation + 1}/7`
+      );
+
+      console.log(
+        `Duration: ${duration}s`
+      );
+
+      // ======================================================
+      // PREPARE IMAGE
+      // ======================================================
+
+      const baseScale =
+        "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080";
+
+      let animationFilter = "";
+
+      // ======================================================
+      // 0 - STRONG ZOOM IN
+      // ======================================================
+
+      if (animation === 0) {
+        animationFilter =
+          `zoompan=` +
+          `z='min(zoom+0.0018,1.25)':` +
+          `x='iw/2-(iw/zoom/2)':` +
+          `y='ih/2-(ih/zoom/2)':` +
+          `d=${totalFrames}:` +
+          `s=1280x720:` +
+          `fps=${fps}`;
+      }
+
+      // ======================================================
+      // 1 - STRONG ZOOM OUT
+      // ======================================================
+
+      else if (animation === 1) {
+        animationFilter =
+          `zoompan=` +
+          `z='if(eq(on,1),1.25,max(1.0,zoom-0.0018))':` +
+          `x='iw/2-(iw/zoom/2)':` +
+          `y='ih/2-(ih/zoom/2)':` +
+          `d=${totalFrames}:` +
+          `s=1280x720:` +
+          `fps=${fps}`;
+      }
+
+      // ======================================================
+      // 2 - PAN LEFT TO RIGHT
+      // ======================================================
+
+      else if (animation === 2) {
+        animationFilter =
+          `zoompan=` +
+          `z='1.18':` +
+          `x='(iw-iw/zoom)*on/${Math.max(
+            1,
+            totalFrames - 1
+          )}':` +
+          `y='ih/2-(ih/zoom/2)':` +
+          `d=${totalFrames}:` +
+          `s=1280x720:` +
+          `fps=${fps}`;
+      }
+
+      // ======================================================
+      // 3 - PAN RIGHT TO LEFT
+      // ======================================================
+
+      else if (animation === 3) {
+        animationFilter =
+          `zoompan=` +
+          `z='1.18':` +
+          `x='(iw-iw/zoom)*(1-on/${Math.max(
+            1,
+            totalFrames - 1
+          )})':` +
+          `y='ih/2-(ih/zoom/2)':` +
+          `d=${totalFrames}:` +
+          `s=1280x720:` +
+          `fps=${fps}`;
+      }
+
+      // ======================================================
+      // 4 - PAN TOP TO BOTTOM
+      // ======================================================
+
+      else if (animation === 4) {
+        animationFilter =
+          `zoompan=` +
+          `z='1.18':` +
+          `x='iw/2-(iw/zoom/2)':` +
+          `y='(ih-ih/zoom)*on/${Math.max(
+            1,
+            totalFrames - 1
+          )}':` +
+          `d=${totalFrames}:` +
+          `s=1280x720:` +
+          `fps=${fps}`;
+      }
+
+      // ======================================================
+      // 5 - PAN BOTTOM TO TOP
+      // ======================================================
+
+      else if (animation === 5) {
+        animationFilter =
+          `zoompan=` +
+          `z='1.18':` +
+          `x='iw/2-(iw/zoom/2)':` +
+          `y='(ih-ih/zoom)*(1-on/${Math.max(
+            1,
+            totalFrames - 1
+          )})':` +
+          `d=${totalFrames}:` +
+          `s=1280x720:` +
+          `fps=${fps}`;
+      }
+
+      // ======================================================
+      // 6 - DIAGONAL ZOOM
+      // ======================================================
+
+      else {
+        animationFilter =
+          `zoompan=` +
+          `z='min(zoom+0.0015,1.22)':` +
+          `x='(iw-iw/zoom)*on/${Math.max(
+            1,
+            totalFrames - 1
+          )}':` +
+          `y='(ih-ih/zoom)*on/${Math.max(
+            1,
+            totalFrames - 1
+          )}':` +
+          `d=${totalFrames}:` +
+          `s=1280x720:` +
+          `fps=${fps}`;
+      }
+
+      console.log(
+        `Animation type: ${animation}`
+      );
+
+      // ======================================================
+      // VIDEO FILTERS
+      // ======================================================
+
+      const videoFilters = [
+        baseScale,
+        animationFilter,
+        "setsar=1",
+      ];
+
+      // ======================================================
+      // FFMPEG
+      // ======================================================
+
+      ffmpeg()
+        .input(imagePath)
+
+        .inputOptions([
+          "-loop",
+          "1",
+        ])
+
+        .input(audioPath)
+
+        .videoFilters(videoFilters)
+
+        .videoCodec("libx264")
+
+        .outputOptions([
+          "-preset",
+          "ultrafast",
+
+          "-crf",
+          "28",
+
+          "-r",
+          String(fps),
+
+          "-pix_fmt",
+          "yuv420p",
+
+          "-c:a",
+          "aac",
+
+          "-b:a",
+          "128k",
+
+          "-shortest",
+
+          "-movflags",
+          "+faststart",
+
+          "-threads",
+          "1",
+        ])
+
+        .duration(duration)
+
+        .on("start", (commandLine) => {
+          console.log(
+            "Animated Scene FFmpeg:",
+            commandLine
+          );
+        })
+
+        .on("progress", (progress) => {
+          console.log(
+            `Animated Scene progress: ${
+              progress.percent || 0
+            }%`
+          );
+        })
+
+        .on("stderr", (stderrLine) => {
+          if (
+            stderrLine &&
+            stderrLine.trim()
+          ) {
+            console.log(
+              "Animated Scene FFmpeg:",
+              stderrLine
+            );
+          }
+        })
+
+        .on("error", (error) => {
+          console.error(
+            "Animated Scene FFmpeg error:",
+            error
+          );
+
+          reject(error);
+        })
+
+        .on("end", () => {
+          console.log(
+            "Animated scene completed:",
+            outputPath
+          );
+
+          resolve(outputPath);
+        })
+
+        .save(outputPath);
+
+    } catch (error) {
+      reject(error);
+    }
+  });
 }
 // ============================================================
 // CONCAT SCENE VIDEOS
