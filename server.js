@@ -1055,16 +1055,30 @@ function buildCharacterFilter(
   const filters = [];
 
   console.log(
-    "Building character filter:",
-    {
-      animation:
-        mode,
+    "========================================"
+  );
 
-      duration,
+  console.log(
+    "BUILDING STRONG CHARACTER ANIMATION"
+  );
 
-      layers:
-        layerTypes,
-    }
+  console.log(
+    "Animation:",
+    mode
+  );
+
+  console.log(
+    "Duration:",
+    duration
+  );
+
+  console.log(
+    "Layers:",
+    layerTypes
+  );
+
+  console.log(
+    "========================================"
   );
 
   // ==========================================================
@@ -1073,125 +1087,129 @@ function buildCharacterFilter(
 
   filters.push(
     `[0:v]scale=1280:720:force_original_aspect_ratio=decrease,` +
-      `pad=1280:720:(ow-iw)/2:(oh-ih)/2:color=black[bg]`
+      `pad=1280:720:(ow-iw)/2:(oh-ih)/2:color=black,` +
+      `setsar=1[bg]`
   );
 
-  let previous =
-    "bg";
+  let previous = "bg";
 
   // ==========================================================
-  // ESCAPE
+  // ESCAPE FFmpeg EXPRESSIONS
   // ==========================================================
 
-  const clean =
-    (value) =>
-      String(value)
-        .replace(
-          /'/g,
-          "\\'"
-        );
+  function clean(value) {
+    return String(value)
+      .replace(/'/g, "\\'");
+  }
 
   // ==========================================================
-  // MOTION
+  // CHARACTER MOTION
   // ==========================================================
 
-  function motion(
-    type
-  ) {
+  function motion(type) {
+
     let x = "0";
     let y = "0";
     let angle = "0";
+    let scale = "1";
 
     // ========================================================
     // WALKING
     // ========================================================
 
-    if (
-      mode ===
-      "walking"
-    ) {
+    if (mode === "walking") {
+
       const f =
         "2*PI*t*1.8";
 
-      if (
-        type ===
-        "body"
-      ) {
-        y =
-          `3+4*sin(${f})`;
+      const step =
+        `sin(${f})`;
+
+      const stepAbs =
+        `abs(sin(${f}))`;
+
+      // BODY
+      if (type === "body") {
 
         x =
-          `2*sin(${f})`;
-      }
+          `18*sin(${f})`;
 
-      else if (
-        type ===
-        "head"
-      ) {
         y =
-          `-1+4*sin(${f}+0.35)`;
+          `-10*abs(sin(${f}))`;
 
-        x =
-          `2*sin(${f}+0.35)`;
+        scale =
+          `1+0.025*sin(${f})`;
 
         angle =
-          `0.035*sin(${f}+0.35)`;
+          `0.035*sin(${f})`;
       }
 
-      else if (
-        type ===
-        "leftArm"
-      ) {
+      // HEAD
+      else if (type === "head") {
+
         x =
-          `5*sin(${f})`;
+          `10*sin(${f}+0.25)`;
 
         y =
-          `2*sin(${f})`;
+          `-18*abs(sin(${f}+0.25))`;
 
         angle =
-          `0.48*sin(${f})`;
+          `0.08*sin(${f}+0.25)`;
+
+        scale =
+          `1+0.015*sin(${f})`;
       }
 
-      else if (
-        type ===
-        "rightArm"
-      ) {
+      // LEFT ARM
+      else if (type === "leftArm") {
+
         x =
-          `-5*sin(${f})`;
+          `22*sin(${f})`;
 
         y =
-          `-2*sin(${f})`;
+          `10*cos(${f})`;
 
         angle =
-          `-0.48*sin(${f})`;
+          `0.65*sin(${f})`;
       }
 
-      else if (
-        type ===
-        "leftLeg"
-      ) {
+      // RIGHT ARM
+      else if (type === "rightArm") {
+
         x =
-          `-7*sin(${f})`;
+          `-22*sin(${f})`;
 
         y =
-          `3*abs(sin(${f}))`;
+          `-10*cos(${f})`;
 
         angle =
-          `-0.32*sin(${f})`;
+          `-0.65*sin(${f})`;
       }
 
-      else if (
-        type ===
-        "rightLeg"
-      ) {
+      // LEFT LEG
+      else if (type === "leftLeg") {
+
         x =
-          `7*sin(${f})`;
+          `-24*sin(${f})`;
 
         y =
-          `3*abs(sin(${f}+PI))`;
+          `12*abs(sin(${f}))`;
 
         angle =
-          `0.32*sin(${f})`;
+          `-0.50*sin(${f})`;
+      }
+
+      // RIGHT LEG
+      else if (type === "rightLeg") {
+
+        x =
+          `24*sin(${f})`;
+
+        y =
+          `12*abs(sin(${f}+PI))`;
+
+        angle =
+          `0.50*sin(${f})`;
       }
     }
 
@@ -1199,64 +1217,75 @@ function buildCharacterFilter(
     // TALKING
     // ========================================================
 
-    else if (
-      mode ===
-      "talking"
-    ) {
+    else if (mode === "talking") {
+
       const f =
-        "2*PI*t*2.1";
+        "2*PI*t*2.2";
 
-      if (
-        type ===
-        "body"
-      ) {
+      if (type === "body") {
+
         y =
-          `2*sin(${f})`;
+          `5*sin(${f})`;
 
         x =
-          `1.5*sin(${f}*0.5)`;
+          `3*sin(${f}*0.5)`;
+
+        scale =
+          `1+0.015*sin(${f})`;
       }
 
-      else if (
-        type ===
-        "head"
-      ) {
-        y =
-          `2*sin(${f})`;
+      else if (type === "head") {
 
         x =
-          `3*sin(${f}*0.55)`;
+          `8*sin(${f}*0.55)`;
+
+        y =
+          `5*sin(${f})`;
 
         angle =
-          `0.055*sin(${f}*0.55)`;
+          `0.10*sin(${f}*0.55)`;
       }
 
-      else if (
-        type ===
-        "leftArm"
-      ) {
+      else if (type === "leftArm") {
+
         x =
-          `4*sin(${f}*0.7)`;
+          `12*sin(${f}*0.8)`;
 
         y =
-          `2*cos(${f}*0.7)`;
+          `8*cos(${f}*0.8)`;
 
         angle =
-          `0.16*sin(${f}*0.7)`;
+          `0.30*sin(${f}*0.8)`;
       }
 
-      else if (
-        type ===
-        "rightArm"
-      ) {
+      else if (type === "rightArm") {
+
         x =
-          `-4*sin(${f}*0.7+PI)`;
+          `-12*sin(${f}*0.8)`;
 
         y =
-          `2*cos(${f}*0.7+PI)`;
+          `-8*cos(${f}*0.8)`;
 
         angle =
-          `-0.16*sin(${f}*0.7+PI)`;
+          `-0.30*sin(${f}*0.8)`;
+      }
+
+      else if (type === "leftLeg") {
+
+        y =
+          `3*sin(${f})`;
+
+        angle =
+          `0.08*sin(${f})`;
+      }
+
+      else if (type === "rightLeg") {
+
+        y =
+          `3*sin(${f}+PI)`;
+
+        angle =
+          `-0.08*sin(${f})`;
       }
     }
 
@@ -1264,98 +1293,93 @@ function buildCharacterFilter(
     // ATTACKING
     // ========================================================
 
-    else if (
-      mode ===
-      "attacking"
-    ) {
+    else if (mode === "attacking") {
+
       const f =
         "2*PI*t*0.9";
 
       const strike =
-        `pow(abs(sin(${f})),2)`;
+        `pow(abs(sin(${f})),3)`;
 
-      if (
-        type ===
-        "body"
-      ) {
+      const recoil =
+        `pow(abs(sin(${f}+PI)),2)`;
+
+      if (type === "body") {
+
         x =
-          `18*${strike}`;
-
-        y =
-          `-4*${strike}`;
-
-        angle =
-          `-0.06*${strike}`;
-      }
-
-      else if (
-        type ===
-        "head"
-      ) {
-        x =
-          `24*${strike}`;
-
-        y =
-          `-8*${strike}`;
-
-        angle =
-          `-0.09*${strike}`;
-      }
-
-      else if (
-        type ===
-        "leftArm"
-      ) {
-        x =
-          `45*${strike}`;
+          `55*${strike}-20*${recoil}`;
 
         y =
           `-18*${strike}`;
 
         angle =
-          `-1.05*${strike}`;
+          `-0.12*${strike}`;
+
+        scale =
+          `1+0.06*${strike}`;
       }
 
-      else if (
-        type ===
-        "rightArm"
-      ) {
+      else if (type === "head") {
+
         x =
-          `-10*${strike}`;
+          `75*${strike}`;
 
         y =
-          `-4*${strike}`;
-
-        angle =
-          `0.35*${strike}`;
-      }
-
-      else if (
-        type ===
-        "leftLeg"
-      ) {
-        x =
-          `12*${strike}`;
-
-        y =
-          `5*${strike}`;
+          `-28*${strike}`;
 
         angle =
           `-0.18*${strike}`;
+
+        scale =
+          `1+0.04*${strike}`;
       }
 
-      else if (
-        type ===
-        "rightLeg"
-      ) {
+      else if (type === "leftArm") {
+
         x =
-          `8*${strike}`;
+          `100*${strike}`;
 
         y =
-          `-2*${strike}`;
+          `-35*${strike}`;
 
         angle =
-          `0.16*${strike}`;
+          `-1.25*${strike}`;
+      }
+
+      else if (type === "rightArm") {
+
+        x =
+          `-35*${strike}`;
+
+        y =
+          `15*${strike}`;
+
+        angle =
+          `0.75*${strike}`;
+      }
+
+      else if (type === "leftLeg") {
+
+        x =
+          `30*${strike}`;
+
+        y =
+          `15*${strike}`;
+
+        angle =
+          `-0.35*${strike}`;
+      }
+
+      else if (type === "rightLeg") {
+
+        x =
+          `20*${strike}`;
+
+        y =
+          `-5*${strike}`;
+
+        angle =
+          `0.30*${strike}`;
       }
     }
 
@@ -1363,83 +1387,260 @@ function buildCharacterFilter(
     // JUMPING
     // ========================================================
 
-    else if (
-      mode ===
-      "jumping"
-    ) {
+    else if (mode === "jumping") {
+
       const f =
         "2*PI*t*0.8";
 
       const jump =
         `abs(sin(${f}))`;
 
-      if (
-        type ===
-        "body"
-      ) {
-        y =
-          `-55*${jump}`;
+      if (type === "body") {
 
         x =
-          `5*sin(${f})`;
+          `15*sin(${f})`;
+
+        y =
+          `-100*${jump}`;
+
+        scale =
+          `1+0.05*${jump}`;
       }
 
-      else if (
-        type ===
-        "head"
-      ) {
-        y =
-          `-62*${jump}`;
+      else if (type === "head") {
 
         x =
-          `5*sin(${f})`;
+          `12*sin(${f})`;
+
+        y =
+          `-120*${jump}`;
 
         angle =
-          `0.06*sin(${f})`;
+          `0.12*sin(${f})`;
       }
 
-      else if (
-        type ===
-        "leftArm"
-      ) {
+      else if (type === "leftArm") {
+
+        x =
+          `-25*sin(${f})`;
+
         y =
-          `-55*${jump}`;
+          `-105*${jump}`;
 
         angle =
-          `-0.65*${jump}`;
+          `-0.9*${jump}`;
       }
 
-      else if (
-        type ===
-        "rightArm"
-      ) {
+      else if (type === "rightArm") {
+
+        x =
+          `25*sin(${f})`;
+
         y =
-          `-55*${jump}`;
+          `-105*${jump}`;
 
         angle =
-          `0.65*${jump}`;
+          `0.9*${jump}`;
       }
 
-      else if (
-        type ===
-        "leftLeg"
-      ) {
+      else if (type === "leftLeg") {
+
+        x =
+          `-20*sin(${f})`;
+
         y =
-          `-50*${jump}`;
+          `-90*${jump}`;
 
         angle =
-          `0.35*sin(${f})`;
+          `0.55*sin(${f})`;
       }
 
-      else if (
-        type ===
-        "rightLeg"
-      ) {
+      else if (type === "rightLeg") {
+
+        x =
+          `20*sin(${f})`;
+
         y =
-          `-50*${jump}`;
+          `-90*${jump}`;
 
         angle =
-          `-0.35*sin(${f})`;
+          `-0.55*sin(${f})`;
+      }
+    }
+
+    // ========================================================
+    // RUNNING
+    // ========================================================
+
+    else if (mode === "running") {
+
+      const f =
+        "2*PI*t*3.0";
+
+      const step =
+        `sin(${f})`;
+
+      const stepAbs =
+        `abs(sin(${f}))`;
+
+      if (type === "body") {
+
+        x =
+          `35*sin(${f})`;
+
+        y =
+          `-20*${stepAbs}`;
+
+        angle =
+          `0.08*sin(${f})`;
+
+        scale =
+          `1+0.04*${stepAbs}`;
+      }
+
+      else if (type === "head") {
+
+        x =
+          `20*sin(${f})`;
+
+        y =
+          `-25*${stepAbs}`;
+
+        angle =
+          `0.12*sin(${f})`;
+      }
+
+      else if (type === "leftArm") {
+
+        x =
+          `35*sin(${f})`;
+
+        y =
+          `15*cos(${f})`;
+
+        angle =
+          `0.95*sin(${f})`;
+      }
+
+      else if (type === "rightArm") {
+
+        x =
+          `-35*sin(${f})`;
+
+        y =
+          `-15*cos(${f})`;
+
+        angle =
+          `-0.95*sin(${f})`;
+      }
+
+      else if (type === "leftLeg") {
+
+        x =
+          `-35*sin(${f})`;
+
+        y =
+          `20*${stepAbs}`;
+
+        angle =
+          `-0.75*sin(${f})`;
+      }
+
+      else if (type === "rightLeg") {
+
+        x =
+          `35*sin(${f})`;
+
+        y =
+          `20*${stepAbs}`;
+
+        angle =
+          `0.75*sin(${f})`;
+      }
+    }
+
+    // ========================================================
+    // DANCING
+    // ========================================================
+
+    else if (mode === "dancing") {
+
+      const f =
+        "2*PI*t*1.4";
+
+      if (type === "body") {
+
+        x =
+          `45*sin(${f})`;
+
+        y =
+          `20*cos(${f})`;
+
+        angle =
+          `0.14*sin(${f})`;
+
+        scale =
+          `1+0.06*sin(${f})`;
+      }
+
+      else if (type === "head") {
+
+        x =
+          `35*sin(${f}+0.4)`;
+
+        y =
+          `15*cos(${f})`;
+
+        angle =
+          `0.18*sin(${f})`;
+      }
+
+      else if (type === "leftArm") {
+
+        x =
+          `55*sin(${f})`;
+
+        y =
+          `-25*cos(${f})`;
+
+        angle =
+          `1.0*sin(${f})`;
+      }
+
+      else if (type === "rightArm") {
+
+        x =
+          `-55*sin(${f})`;
+
+        y =
+          `25*cos(${f})`;
+
+        angle =
+          `-1.0*sin(${f})`;
+      }
+
+      else if (type === "leftLeg") {
+
+        x =
+          `30*sin(${f})`;
+
+        y =
+          `20*cos(${f})`;
+
+        angle =
+          `0.45*sin(${f})`;
+      }
+
+      else if (type === "rightLeg") {
+
+        x =
+          `-30*sin(${f})`;
+
+        y =
+          `-20*cos(${f})`;
+
+        angle =
+          `-0.45*sin(${f})`;
       }
     }
 
@@ -1447,55 +1648,45 @@ function buildCharacterFilter(
     // BREATHING
     // ========================================================
 
-    else if (
-      mode ===
-      "breathing"
-    ) {
+    else if (mode === "breathing") {
+
       const f =
-        "2*PI*t*0.75";
+        "2*PI*t*0.8";
 
-      if (
-        type ===
-        "body"
-      ) {
+      if (type === "body") {
+
         y =
-          `3*sin(${f})`;
+          `5*sin(${f})`;
 
-        x =
-          `1.5*sin(${f})`;
+        scale =
+          `1+0.04*sin(${f})`;
       }
 
-      else if (
-        type ===
-        "head"
-      ) {
+      else if (type === "head") {
+
         y =
-          `-2*sin(${f})`;
+          `-5*sin(${f})`;
 
         angle =
-          `0.025*sin(${f})`;
+          `0.04*sin(${f})`;
       }
 
-      else if (
-        type ===
-        "leftArm"
-      ) {
+      else if (type === "leftArm") {
+
         y =
-          `2*sin(${f})`;
+          `4*sin(${f})`;
 
         angle =
-          `0.05*sin(${f})`;
+          `0.10*sin(${f})`;
       }
 
-      else if (
-        type ===
-        "rightArm"
-      ) {
+      else if (type === "rightArm") {
+
         y =
-          `2*sin(${f})`;
+          `4*sin(${f})`;
 
         angle =
-          `-0.05*sin(${f})`;
+          `-0.10*sin(${f})`;
       }
     }
 
@@ -1504,71 +1695,87 @@ function buildCharacterFilter(
     // ========================================================
 
     else {
+
       const f =
-        "2*PI*t*0.7";
+        "2*PI*t*0.75";
 
-      if (
-        type ===
-        "body"
-      ) {
+      if (type === "body") {
+
         y =
-          `2*sin(${f})`;
+          `5*sin(${f})`;
 
         x =
-          `1.2*sin(${f})`;
+          `3*sin(${f})`;
+
+        scale =
+          `1+0.025*sin(${f})`;
       }
 
-      else if (
-        type ===
-        "head"
-      ) {
+      else if (type === "head") {
+
         y =
-          `-2*sin(${f})`;
+          `-8*sin(${f})`;
 
         x =
-          `1.5*sin(${f}*0.8)`;
+          `6*sin(${f}*0.8)`;
 
         angle =
-          `0.025*sin(${f}*0.8)`;
+          `0.08*sin(${f}*0.8)`;
       }
 
-      else if (
-        type ===
-        "leftArm"
-      ) {
+      else if (type === "leftArm") {
+
         y =
-          `1.5*sin(${f})`;
+          `5*sin(${f})`;
+
+        x =
+          `8*sin(${f})`;
 
         angle =
-          `0.06*sin(${f})`;
+          `0.18*sin(${f})`;
       }
 
-      else if (
-        type ===
-        "rightArm"
-      ) {
+      else if (type === "rightArm") {
+
         y =
-          `1.5*sin(${f})`;
+          `5*sin(${f})`;
+
+        x =
+          `-8*sin(${f})`;
 
         angle =
-          `-0.06*sin(${f})`;
+          `-0.18*sin(${f})`;
+      }
+
+      else if (type === "leftLeg") {
+
+        y =
+          `3*sin(${f})`;
+
+        angle =
+          `0.08*sin(${f})`;
+      }
+
+      else if (type === "rightLeg") {
+
+        y =
+          `3*sin(${f}+PI)`;
+
+        angle =
+          `-0.08*sin(${f})`;
       }
     }
 
     return {
-      x:
-        clean(x),
-
-      y:
-        clean(y),
-
-      angle:
-        clean(angle),
+      x: clean(x),
+      y: clean(y),
+      angle: clean(angle),
+      scale: clean(scale),
     };
   }
 
   // ==========================================================
-  // BUILD LAYERS
+  // BUILD CHARACTER LAYERS
   // ==========================================================
 
   for (
@@ -1576,6 +1783,7 @@ function buildCharacterFilter(
     i < layerTypes.length;
     i++
   ) {
+
     const type =
       layerTypes[i];
 
@@ -1583,25 +1791,54 @@ function buildCharacterFilter(
       continue;
     }
 
-    const output =
-      `layer_${i}`;
-
-    const m =
+    const motionData =
       motion(type);
 
-    // Rotate transparent layer.
+    const layer =
+      `layer_${i}`;
+
+    // --------------------------------------------------------
+    // SCALE + ROTATE + MOVE
+    // --------------------------------------------------------
+
     filters.push(
-      `[${i}:v]format=rgba,` +
-        `rotate='${m.angle}':ow=iw:oh=ih:` +
-        `fillcolor=0x00000000:cubic=1,` +
-        `overlay=x='${m.x}':y='${m.y}':eval=frame` +
-        `[${output}]`
+      `[${i}:v]` +
+        `format=rgba,` +
+
+        `scale=` +
+        `iw*(${motionData.scale})` +
+        `:` +
+        `ih*(${motionData.scale})` +
+        `:eval=frame,` +
+
+        `rotate=` +
+        `'${motionData.angle}'` +
+        `:` +
+        `ow=iw` +
+        `:` +
+        `oh=ih` +
+        `:` +
+        `fillcolor=0x00000000` +
+        `:cubic=1` +
+
+        `[${layer}]`
     );
 
-    // Composite this part over the previous image.
+    // --------------------------------------------------------
+    // MOVE CHARACTER PART
+    // --------------------------------------------------------
+
     filters.push(
-      `[${previous}][${output}]` +
-        `overlay=0:0:eval=frame` +
+      `[${previous}][${layer}]` +
+        `overlay=` +
+        `x='` +
+        `(W-w)/2+${motionData.x}` +
+        `'` +
+        `:` +
+        `y='` +
+        `(H-h)/2+${motionData.y}` +
+        `'` +
+        `:eval=frame` +
         `[composite_${i}]`
     );
 
@@ -1609,13 +1846,18 @@ function buildCharacterFilter(
       `composite_${i}`;
   }
 
+  // ==========================================================
+  // FINAL VIDEO
+  // ==========================================================
+
   filters.push(
-    `[${previous}]format=yuv420p[final]`
+    `[${previous}]` +
+      `format=yuv420p,` +
+      `fps=24` +
+      `[final]`
   );
 
-  return filters.join(
-    ";"
-  );
+  return filters.join(";");
 }
 
 // ============================================================
