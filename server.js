@@ -2,6 +2,7 @@ require("dotenv").config();
 
 const express = require("express");
 const cors = require("cors");
+const multer = require("multer");
 const fs = require("fs");
 const path = require("path");
 const http = require("http");
@@ -14,100 +15,44 @@ const ffprobeStatic = require("ffprobe-static");
 
 const app = express();
 
-/* =========================================================
-   CONFIG
-========================================================= */
-
-const PORT =
-  process.env.PORT || 3000;
+const PORT = process.env.PORT || 3000;
 
 const SERVER_URL =
   process.env.SERVER_URL ||
   "https://ai-video.bonto.run";
 
 const ELEVENLABS_API_KEY =
-  process.env.ELEVENLABS_API_KEY;
+  process.env.ELEVENLABS_API_KEY || "";
+
+const ELEVENLABS_VOICE_ID =
+  process.env.ELEVENLABS_VOICE_ID ||
+  "21m00Tcm4TlvDq8ikWAM";
 
 const ELEVENLABS_MODEL =
   process.env.ELEVENLABS_MODEL ||
   "eleven_multilingual_v2";
-
-/*
- * Voice IDs.
- *
- * You can replace these later with your preferred
- * ElevenLabs voices.
- */
-const VOICES = {
-  Female:
-    process.env.ELEVENLABS_FEMALE_VOICE_ID ||
-    "21m00Tcm4TlvDq8ikWAM",
-
-  Male:
-    process.env.ELEVENLABS_MALE_VOICE_ID ||
-    "pNInz6obpgDQGcFmaJgB",
-
-  "Deep Male":
-    process.env.ELEVENLABS_DEEP_MALE_VOICE_ID ||
-    "TxGEqnHWrfWFTfGW9XjX",
-
-  Storyteller:
-    process.env.ELEVENLABS_STORYTELLER_VOICE_ID ||
-    "ErXwobaYiN019PkySvjV",
-};
 
 /* =========================================================
    FFMPEG
 ========================================================= */
 
 if (ffmpegStatic) {
-  ffmpeg.setFfmpegPath(
-    ffmpegStatic
-  );
+  ffmpeg.setFfmpegPath(ffmpegStatic);
 }
 
-if (
-  ffprobeStatic &&
-  ffprobeStatic.path
-) {
-  ffmpeg.setFfprobePath(
-    ffprobeStatic.path
-  );
+if (ffprobeStatic?.path) {
+  ffmpeg.setFfprobePath(ffprobeStatic.path);
 }
 
 /* =========================================================
    DIRECTORIES
 ========================================================= */
 
-const uploadsDir =
-  path.join(
-    __dirname,
-    "uploads"
-  );
-
-const imagesDir =
-  path.join(
-    uploadsDir,
-    "images"
-  );
-
-const audioDir =
-  path.join(
-    uploadsDir,
-    "audio"
-  );
-
-const videosDir =
-  path.join(
-    uploadsDir,
-    "videos"
-  );
-
-const tempDir =
-  path.join(
-    uploadsDir,
-    "temp"
-  );
+const uploadsDir = path.join(__dirname, "uploads");
+const imagesDir = path.join(uploadsDir, "images");
+const audioDir = path.join(uploadsDir, "audio");
+const videosDir = path.join(uploadsDir, "videos");
+const tempDir = path.join(uploadsDir, "temp");
 
 [
   uploadsDir,
@@ -127,48 +72,29 @@ const tempDir =
    EXPRESS
 ========================================================= */
 
-const allowedOrigins = [
-  "https://ai-video-studio-542c9.web.app",
-  "https://ai-video-studio-542c9.firebaseapp.com",
-
-  "http://localhost:5173",
-  "http://localhost:5174",
-  "http://localhost:5175",
-];
-
 app.use(
   cors({
-    origin: function (
-      origin,
-      callback
-    ) {
+    origin: function (origin, callback) {
+      const allowedOrigins = [
+        "https://ai-video-studio-542c9.web.app",
+        "https://ai-video-studio-542c9.firebaseapp.com",
+
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://localhost:5175",
+      ];
+
       if (!origin) {
-        return callback(
-          null,
-          true
-        );
+        return callback(null, true);
       }
 
-      if (
-        allowedOrigins.includes(
-          origin
-        )
-      ) {
-        return callback(
-          null,
-          true
-        );
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
       }
 
-      console.log(
-        "Blocked CORS:",
-        origin
-      );
+      console.log("Blocked CORS:", origin);
 
-      return callback(
-        null,
-        false
-      );
+      return callback(null, false);
     },
 
     methods: [
@@ -207,29 +133,62 @@ app.use(
 
 app.use(
   "/uploads",
-  express.static(
-    uploadsDir,
-    {
-      maxAge: "1h",
-    }
-  )
+  express.static(uploadsDir, {
+    maxAge: "1h",
+  })
 );
+
+/* =========================================================
+   MULTER
+========================================================= */
+
+const storage =
+  multer.diskStorage({
+    destination: function (req, file, cb) {
+      const folder =
+        file.mimetype.startsWith("image/")
+          ? imagesDir
+          : file.mimetype.startsWith("audio/")
+          ? audioDir
+          : videosDir;
+
+      cb(null, folder);
+    },
+
+    filename: function (req, file, cb) {
+      const extension =
+        path.extname(
+          file.originalname || ".bin"
+        );
+
+      cb(
+        null,
+        `${uuidv4()}${extension}`
+      );
+    },
+  });
+
+const upload =
+  multer({
+    storage,
+
+    limits: {
+      fileSize:
+        200 * 1024 * 1024,
+    },
+  });
 
 /* =========================================================
    HELPERS
 ========================================================= */
 
-function safeUnlink(
-  filePath
-) {
+function safeUnlink(filePath) {
   try {
     if (
       filePath &&
       fs.existsSync(filePath)
     ) {
-      fs.unlinkSync(
-        filePath
-      );
+      fs.unlinkSync(filePath);
     }
   } catch (error) {
     console.log(
@@ -243,13 +202,10 @@ function parseDuration(
   value,
   fallback = 5
 ) {
-  const number =
-    Number(value);
+  const number = Number(value);
 
   if (
-    !Number.isFinite(
-      number
-    ) ||
+    !Number.isFinite(number) ||
     number <= 0
   ) {
     return fallback;
@@ -274,13 +230,10 @@ function getExtensionFromUrl(
 ) {
   try {
     const pathname =
-      new URL(url)
-        .pathname;
+      new URL(url).pathname;
 
     const ext =
-      path.extname(
-        pathname
-      );
+      path.extname(pathname);
 
     if (ext) {
       return ext;
@@ -305,9 +258,7 @@ function downloadFile(
       }
 
       const protocol =
-        url.startsWith(
-          "https://"
-        )
+        url.startsWith("https://")
           ? https
           : http;
 
@@ -319,19 +270,14 @@ function downloadFile(
           },
           (response) => {
             if (
-              response.statusCode >=
-                300 &&
-              response.statusCode <
-                400 &&
-              response.headers
-                .location
+              response.statusCode >= 300 &&
+              response.statusCode < 400 &&
+              response.headers.location
             ) {
               response.resume();
 
               return downloadFile(
-                response
-                  .headers
-                  .location,
+                response.headers.location,
                 destination
               )
                 .then(resolve)
@@ -339,14 +285,13 @@ function downloadFile(
             }
 
             if (
-              response.statusCode !==
-              200
+              response.statusCode !== 200
             ) {
               response.resume();
 
               return reject(
                 new Error(
-                  `Download failed with HTTP ${response.statusCode}: ${url}`
+                  `Download failed HTTP ${response.statusCode}: ${url}`
                 )
               );
             }
@@ -361,11 +306,8 @@ function downloadFile(
             file.on(
               "finish",
               () => {
-                file.close(
-                  () =>
-                    resolve(
-                      destination
-                    )
+                file.close(() =>
+                  resolve(destination)
                 );
               }
             );
@@ -388,7 +330,7 @@ function downloadFile(
         () => {
           request.destroy(
             new Error(
-              `Download timeout: ${url}`
+              "Download timeout"
             )
           );
         }
@@ -410,21 +352,15 @@ function secondsFromTimemark(
   }
 
   const parts =
-    String(
-      timemark
-    ).split(":");
+    String(timemark).split(":");
 
-  if (
-    parts.length !== 3
-  ) {
+  if (parts.length !== 3) {
     return 0;
   }
 
   return (
-    (Number(parts[0]) || 0) *
-      3600 +
-    (Number(parts[1]) || 0) *
-      60 +
+    (Number(parts[0]) || 0) * 3600 +
+    (Number(parts[1]) || 0) * 60 +
     (Number(parts[2]) || 0)
   );
 }
@@ -438,10 +374,7 @@ function calculateProgress(
       timemark
     );
 
-  if (
-    !duration ||
-    duration <= 0
-  ) {
+  if (!duration) {
     return 0;
   }
 
@@ -450,8 +383,7 @@ function calculateProgress(
     Math.max(
       0,
       Math.round(
-        (seconds /
-          duration) *
+        (seconds / duration) *
           100
       )
     )
@@ -465,14 +397,10 @@ function probeVideo(
     (resolve, reject) => {
       ffmpeg.ffprobe(
         filePath,
-        (
-          error,
-          data
-        ) => {
+        (error, data) => {
           if (error) {
-            return reject(
-              error
-            );
+            reject(error);
+            return;
           }
 
           resolve(data);
@@ -483,169 +411,49 @@ function probeVideo(
 }
 
 /* =========================================================
-   POLLINATIONS
-========================================================= */
-
-async function generatePollinationsImage(
-  prompt,
-  options = {}
-) {
-  const width =
-    options.width ||
-    1280;
-
-  const height =
-    options.height ||
-    720;
-
-  const model =
-    options.model ||
-    "flux";
-
-  const encodedPrompt =
-    encodeURIComponent(
-      prompt
-    );
-
-  const sourceUrl =
-    `https://image.pollinations.ai/prompt/${encodedPrompt}` +
-    `?width=${width}` +
-    `&height=${height}` +
-    `&model=${model}` +
-    `&nologo=true`;
-
-  const extension =
-    options.extension ||
-    ".jpg";
-
-  const folder =
-    options.folder ||
-    "images";
-
-  const filename =
-    `generated_${uuidv4()}${extension}`;
-
-  const outputDir =
-    folder === "images"
-      ? imagesDir
-      : uploadsDir;
-
-  const outputPath =
-    path.join(
-      outputDir,
-      filename
-    );
-
-  await downloadFile(
-    sourceUrl,
-    outputPath
-  );
-
-  return {
-    sourceUrl,
-    filename,
-    outputPath,
-    publicUrl:
-      getPublicUrl(
-        folder,
-        filename
-      ),
-  };
-}
-
-/* =========================================================
-   CHARACTER DETECTION
-========================================================= */
-
-function hasCharacterAnimation(
-  scene
-) {
-  if (!scene) {
-    return false;
-  }
-
-  const animation =
-    String(
-      scene.animation ||
-        ""
-    )
-      .toLowerCase()
-      .trim();
-
-  return Boolean(
-    scene.characterUrl &&
-      scene.backgroundUrl &&
-      animation
-  );
-}
-
-/* =========================================================
    HEALTH
 ========================================================= */
 
-app.get(
-  "/",
-  (req, res) => {
-    res.json({
-      success: true,
-
-      message:
-        "AI Video Studio Server is running",
-
-      server:
-        SERVER_URL,
-
-      characterAnimation:
-        true,
-
-      characterSystem:
-        "automatic-generated-character",
-
-      timestamp:
-        new Date().toISOString(),
-    });
-  }
-);
+app.get("/", (req, res) => {
+  res.json({
+    success: true,
+    message:
+      "AI Video Studio Server is running",
+    server: SERVER_URL,
+    characterGeneration: true,
+    characterAnimation: true,
+    timestamp:
+      new Date().toISOString(),
+  });
+});
 
 app.get(
   "/api/health",
   (req, res) => {
     res.json({
       success: true,
-
       status: "healthy",
-
-      server:
-        SERVER_URL,
-
+      server: SERVER_URL,
       ffmpeg:
-        Boolean(
-          ffmpegStatic
-        ),
-
+        Boolean(ffmpegStatic),
       ffprobe:
         Boolean(
           ffprobeStatic?.path
         ),
-
       elevenlabs:
         Boolean(
           ELEVENLABS_API_KEY
         ),
-
-      pollinations: true,
-
+      characterGeneration:
+        true,
       characterAnimation:
         true,
-
-      characterSystem:
-        "automatic-generated-character",
     });
   }
 );
 
 /* =========================================================
-   NORMAL IMAGE
+   GENERATE NORMAL IMAGE
 ========================================================= */
 
 app.post(
@@ -657,36 +465,51 @@ app.post(
       } = req.body;
 
       if (!prompt) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            error:
-              "Prompt is required",
-          });
+        return res.status(400).json({
+          success: false,
+          error:
+            "Prompt is required",
+        });
       }
 
+      const encodedPrompt =
+        encodeURIComponent(
+          prompt
+        );
+
+      const sourceUrl =
+        `https://image.pollinations.ai/prompt/${encodedPrompt}` +
+        `?width=1280&height=720&model=flux&nologo=true`;
+
+      const filename =
+        `image_${uuidv4()}.jpg`;
+
+      const outputPath =
+        path.join(
+          imagesDir,
+          filename
+        );
+
       console.log(
-        "Generating normal image..."
+        "Generating image:",
+        prompt
       );
 
-      const result =
-        await generatePollinationsImage(
-          prompt,
-          {
-            width: 1280,
-            height: 720,
-          }
+      await downloadFile(
+        sourceUrl,
+        outputPath
+      );
+
+      const imageUrl =
+        getPublicUrl(
+          "images",
+          filename
         );
 
       res.json({
         success: true,
-
-        imageUrl:
-          result.publicUrl,
-
-        url:
-          result.publicUrl,
+        imageUrl,
+        url: imageUrl,
       });
     } catch (error) {
       console.error(
@@ -696,7 +519,6 @@ app.post(
 
       res.status(500).json({
         success: false,
-
         error:
           error.message,
       });
@@ -705,7 +527,7 @@ app.post(
 );
 
 /* =========================================================
-   AUTOMATIC CHARACTER GENERATION
+   GENERATE CHARACTER
 ========================================================= */
 
 app.post(
@@ -713,56 +535,86 @@ app.post(
   async (req, res) => {
     try {
       const {
-        prompt,
+        idea,
+        description,
+        characterDescription,
+        language,
       } = req.body;
 
-      if (!prompt) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            error:
-              "Character prompt is required",
-          });
-      }
+      const characterText =
+        characterDescription ||
+        description ||
+        idea ||
+        "a cinematic fantasy character";
 
-      const characterPrompt =
-        `${prompt} ` +
-        `Full body visible from head to feet. ` +
-        `Character centered. ` +
-        `Pure solid bright green background. ` +
-        `Uniform green screen. ` +
+      const prompt =
+        `Full body character design for ${characterText}. ` +
+        `The character must be completely visible from head to feet. ` +
+        `Centered composition. ` +
+        `Standing pose. ` +
+        `Clear face. ` +
+        `Clear arms and legs. ` +
+        `Clean simple solid green background. ` +
         `No text. No watermark. ` +
-        `No other people.`;
+        `Photorealistic cinematic character. ` +
+        `Detailed face. Detailed clothing. ` +
+        `Consistent single character. ` +
+        `16:9.`;
 
       console.log(
-        "GENERATING CHARACTER"
+        "========================================"
       );
 
       console.log(
-        characterPrompt
+        "AUTO CHARACTER GENERATION"
       );
 
-      const result =
-        await generatePollinationsImage(
-          characterPrompt,
-          {
-            width: 768,
-            height: 1024,
-          }
+      console.log(
+        "Prompt:",
+        prompt
+      );
+
+      console.log(
+        "========================================"
+      );
+
+      const encodedPrompt =
+        encodeURIComponent(
+          prompt
+        );
+
+      const sourceUrl =
+        `https://image.pollinations.ai/prompt/${encodedPrompt}` +
+        `?width=1024&height=1024&model=flux&nologo=true&seed=${Math.floor(
+          Math.random() * 1000000
+        )}`;
+
+      const filename =
+        `character_${uuidv4()}.jpg`;
+
+      const outputPath =
+        path.join(
+          imagesDir,
+          filename
+        );
+
+      await downloadFile(
+        sourceUrl,
+        outputPath
+      );
+
+      const characterUrl =
+        getPublicUrl(
+          "images",
+          filename
         );
 
       res.json({
         success: true,
-
-        characterUrl:
-          result.publicUrl,
-
-        imageUrl:
-          result.publicUrl,
-
-        url:
-          result.publicUrl,
+        characterUrl,
+        url: characterUrl,
+        prompt,
+        type: "character",
       });
     } catch (error) {
       console.error(
@@ -772,7 +624,6 @@ app.post(
 
       res.status(500).json({
         success: false,
-
         error:
           error.message,
       });
@@ -781,7 +632,7 @@ app.post(
 );
 
 /* =========================================================
-   AUTOMATIC BACKGROUND GENERATION
+   GENERATE BACKGROUND
 ========================================================= */
 
 app.post(
@@ -789,53 +640,81 @@ app.post(
   async (req, res) => {
     try {
       const {
-        prompt,
+        idea,
+        description,
+        backgroundDescription,
       } = req.body;
 
-      if (!prompt) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            error:
-              "Background prompt is required",
-          });
-      }
+      const backgroundText =
+        backgroundDescription ||
+        description ||
+        idea ||
+        "cinematic environment";
 
-      const backgroundPrompt =
-        `${prompt} ` +
-        `Wide cinematic environment. ` +
-        `Leave open foreground space for a full-body character. ` +
-        `No people. No characters. No text. No watermark.`;
+      const prompt =
+        `Ultra realistic cinematic background environment for ${backgroundText}. ` +
+        `No people. No characters. No animals. ` +
+        `Wide cinematic composition. ` +
+        `Natural lighting. ` +
+        `Detailed environment. ` +
+        `Photorealistic. ` +
+        `16:9. ` +
+        `No text. No watermark.`;
 
       console.log(
-        "GENERATING BACKGROUND"
+        "========================================"
       );
 
       console.log(
-        backgroundPrompt
+        "AUTO BACKGROUND GENERATION"
       );
 
-      const result =
-        await generatePollinationsImage(
-          backgroundPrompt,
-          {
-            width: 1280,
-            height: 720,
-          }
+      console.log(
+        "Prompt:",
+        prompt
+      );
+
+      console.log(
+        "========================================"
+      );
+
+      const encodedPrompt =
+        encodeURIComponent(
+          prompt
+        );
+
+      const sourceUrl =
+        `https://image.pollinations.ai/prompt/${encodedPrompt}` +
+        `?width=1280&height=720&model=flux&nologo=true&seed=${Math.floor(
+          Math.random() * 1000000
+        )}`;
+
+      const filename =
+        `background_${uuidv4()}.jpg`;
+
+      const outputPath =
+        path.join(
+          imagesDir,
+          filename
+        );
+
+      await downloadFile(
+        sourceUrl,
+        outputPath
+      );
+
+      const backgroundUrl =
+        getPublicUrl(
+          "images",
+          filename
         );
 
       res.json({
         success: true,
-
-        backgroundUrl:
-          result.publicUrl,
-
-        imageUrl:
-          result.publicUrl,
-
-        url:
-          result.publicUrl,
+        backgroundUrl,
+        url: backgroundUrl,
+        prompt,
+        type: "background",
       });
     } catch (error) {
       console.error(
@@ -845,7 +724,6 @@ app.post(
 
       res.status(500).json({
         success: false,
-
         error:
           error.message,
       });
@@ -854,7 +732,7 @@ app.post(
 );
 
 /* =========================================================
-   ELEVENLABS
+   GENERATE VOICE
 ========================================================= */
 
 app.post(
@@ -863,56 +741,37 @@ app.post(
     try {
       const {
         text,
-        voice,
         voiceId,
         modelId,
       } = req.body;
 
       if (!text) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            error:
-              "Text is required",
-          });
+        return res.status(400).json({
+          success: false,
+          error:
+            "Text is required",
+        });
       }
 
-      if (
-        !ELEVENLABS_API_KEY
-      ) {
-        return res
-          .status(500)
-          .json({
-            success: false,
-            error:
-              "ElevenLabs API key is not configured",
-          });
+      if (!ELEVENLABS_API_KEY) {
+        return res.status(500).json({
+          success: false,
+          error:
+            "ElevenLabs API key is not configured",
+        });
       }
 
       const selectedVoice =
         voiceId ||
-        VOICES[
-          voice || "Female"
-        ] ||
-        VOICES.Female;
+        ELEVENLABS_VOICE_ID;
 
       const selectedModel =
         modelId ||
         ELEVENLABS_MODEL;
 
-      console.log(
-        "Generating voice:",
-        voice,
-        selectedVoice
-      );
-
-      const url =
-        `https://api.elevenlabs.io/v1/text-to-speech/${selectedVoice}`;
-
       const response =
         await fetch(
-          url,
+          `https://api.elevenlabs.io/v1/text-to-speech/${selectedVoice}`,
           {
             method: "POST",
 
@@ -934,15 +793,10 @@ app.post(
                 selectedModel,
 
               voice_settings: {
-                stability:
-                  0.5,
-
+                stability: 0.5,
                 similarity_boost:
                   0.75,
-
-                style:
-                  0.2,
-
+                style: 0.2,
                 use_speaker_boost:
                   true,
               },
@@ -954,19 +808,15 @@ app.post(
         const errorText =
           await response.text();
 
-        return res
-          .status(
-            response.status
-          )
-          .json({
-            success: false,
-
-            error:
-              `ElevenLabs HTTP ${response.status}`,
-
-            details:
-              errorText,
-          });
+        return res.status(
+          response.status
+        ).json({
+          success: false,
+          error:
+            `ElevenLabs HTTP ${response.status}`,
+          details:
+            errorText,
+        });
       }
 
       const buffer =
@@ -996,21 +846,17 @@ app.post(
 
       res.json({
         success: true,
-
         audioUrl,
-
-        url:
-          audioUrl,
+        url: audioUrl,
       });
     } catch (error) {
       console.error(
-        "Voice error:",
+        "Voice generation error:",
         error
       );
 
       res.status(500).json({
         success: false,
-
         error:
           error.message,
       });
@@ -1019,7 +865,56 @@ app.post(
 );
 
 /* =========================================================
-   NORMAL CINEMATIC RENDER
+   UPLOAD
+========================================================= */
+
+app.post(
+  "/api/upload",
+  upload.single("file"),
+  (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "No file uploaded",
+        });
+      }
+
+      const folder =
+        req.file.mimetype.startsWith(
+          "image/"
+        )
+          ? "images"
+          : req.file.mimetype.startsWith(
+              "audio/"
+            )
+          ? "audio"
+          : "videos";
+
+      const fileUrl =
+        getPublicUrl(
+          folder,
+          req.file.filename
+        );
+
+      res.json({
+        success: true,
+        fileUrl,
+        url: fileUrl,
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error:
+          error.message,
+      });
+    }
+  }
+);
+
+/* =========================================================
+   NORMAL CINEMATIC VIDEO
 ========================================================= */
 
 function renderSceneVideo(
@@ -1063,48 +958,36 @@ function renderSceneVideo(
 
       command =
         command
-          .complexFilter(
-            filter
-          )
+          .complexFilter(filter)
           .videoCodec(
             "libx264"
           )
           .outputOptions([
             "-pix_fmt",
             "yuv420p",
-
             "-preset",
             "veryfast",
-
             "-crf",
             "23",
-
             "-r",
             "24",
-
             "-movflags",
             "+faststart",
-
             "-threads",
             "1",
-
-            "-t",
-            String(
-              duration
-            ),
+            `-t ${duration}`,
           ]);
 
       if (audioPath) {
         command =
           command
-            .audioCodec(
-              "aac"
-            )
-            .audioBitrate(
-              "128k"
-            )
+            .audioCodec("aac")
+            .audioBitrate("128k")
             .outputOptions([
-              "-shortest",
+              "-af",
+              "apad",
+              "-t",
+              String(duration),
             ]);
       } else {
         command =
@@ -1114,91 +997,54 @@ function renderSceneVideo(
       }
 
       command
-        .on(
-          "start",
-          (line) =>
-            console.log(
-              "Scene FFmpeg:",
-              line
-            )
-        )
+        .on("start", (cmd) => {
+          console.log(
+            "Scene FFmpeg:",
+            cmd
+          );
+        })
 
         .on(
           "progress",
-          (progress) =>
+          (progress) => {
             console.log(
               `Scene progress: ${calculateProgress(
                 progress.timemark,
                 duration
               )}%`
-            )
+            );
+          }
         )
 
         .on(
           "stderr",
           (line) => {
             if (
-              line?.trim()
+              line &&
+              line.trim()
             ) {
               console.log(
-                "Scene:",
+                "Scene FFmpeg:",
                 line
               );
             }
           }
         )
 
-        .on(
-          "end",
-          () =>
-            resolve(
-              outputPath
-            )
-        )
+        .on("end", () => {
+          resolve(outputPath);
+        })
 
-        .on(
-          "error",
-          reject
-        )
+        .on("error", reject)
 
-        .save(
-          outputPath
-        );
+        .save(outputPath);
     }
   );
 }
 
 /* =========================================================
-   CHARACTER MOTION FILTER
+   CHARACTER ANIMATION
 ========================================================= */
-
-/*
- * Character image:
- *
- * [1:v]
- *
- * Background:
- *
- * [0:v]
- *
- * We chroma-key the green background from
- * the generated character.
- *
- * Then we move the character.
- *
- * TALK:
- * - body bob
- * - horizontal micro movement
- * - slight size pulse
- *
- * TALK + WALK:
- * - character travels left -> right
- * - stronger body bob
- * - size pulse
- *
- * This is intentionally built without requiring
- * separate body/head/arm/leg uploads.
- */
 
 function buildCharacterFilter(
   animation,
@@ -1206,148 +1052,136 @@ function buildCharacterFilter(
 ) {
   const mode =
     String(
-      animation ||
-        "talking"
+      animation || "talking"
     )
       .toLowerCase()
       .trim();
 
   const filters = [];
 
-  /* -------------------------------------------------------
-     BACKGROUND
-  ------------------------------------------------------- */
-
-  filters.push(
-    `[0:v]` +
-      `scale=1280:720:force_original_aspect_ratio=increase,` +
-      `crop=1280:720,` +
-      `setsar=1` +
-      `[bg]`
-  );
-
-  /* -------------------------------------------------------
-     CHARACTER
-  ------------------------------------------------------- */
-
   /*
-   * Green screen removal.
-   *
-   * chromakey color:
-   * 0x00ff00
-   *
-   * similarity / blend values can be tuned.
+   * Background
    */
 
   filters.push(
-    `[1:v]` +
-      `scale=420:-1:force_original_aspect_ratio=decrease,` +
-      `format=rgba,` +
-      `chromakey=0x00ff00:0.28:0.08,` +
-      `setsar=1` +
-      `[char]`
+    `[0:v]scale=1280:720:force_original_aspect_ratio=decrease,` +
+      `pad=1280:720:(ow-iw)/2:(oh-ih)/2:color=black,` +
+      `setsar=1[bg]`
   );
 
-  let x;
-  let y;
+  /*
+   * Character.
+   *
+   * We remove green background.
+   */
 
-  /* -------------------------------------------------------
+  filters.push(
+    `[1:v]scale=520:-1:force_original_aspect_ratio=decrease,` +
+      `format=rgba,` +
+      `chromakey=0x00ff00:0.22:0.08,` +
+      `setsar=1[character]`
+  );
+
+  let x =
+    "(W-w)/2";
+
+  let y =
+    "H-h-20";
+
+  /* =======================================================
      TALK
-  ------------------------------------------------------- */
+  ======================================================= */
 
   if (
     mode === "talking" ||
     mode === "talk"
   ) {
     x =
-      `(W-w)/2` +
-      `+14*sin(2*PI*t*1.25)`;
+      "(W-w)/2 + 10*sin(2*PI*t*1.3)";
 
     y =
-      `H-h-25` +
-      `+8*sin(2*PI*t*2.0)`;
+      "H-h-20 + 5*sin(2*PI*t*2.8)";
 
-    filters.push(
-      `[char]` +
-        `scale=` +
-        `w='iw*(1+0.015*sin(2*PI*t*2.4))':` +
-        `h='ih*(1+0.015*sin(2*PI*t*2.4))':` +
-        `eval=frame` +
-        `[moving]`
-    );
+    /*
+     * Stronger talking movement.
+     *
+     * The whole character slightly moves,
+     * simulating speaking/body reaction.
+     */
   }
 
-  /* -------------------------------------------------------
+  /* =======================================================
      TALK + WALK
-  ------------------------------------------------------- */
+  ======================================================= */
 
   else if (
-    mode ===
-      "talking-walking" ||
-    mode === "talk_walk" ||
-    mode === "walking"
+    mode === "talking-walking" ||
+    mode === "talk-walk" ||
+    mode === "talk_walk"
   ) {
+    const travel =
+      `(-w-50)+((W+w+100)*(${duration > 0 ? "t/" + duration : "0"}))`;
+
+    const bob =
+      `12*abs(sin(2*PI*t*2.3))`;
+
+    const sway =
+      `8*sin(2*PI*t*2.3)`;
+
     x =
-      `-w+((W+w+120)*(t/${duration}))`;
+      `${travel}+${sway}`;
 
     y =
-      `H-h-25` +
-      `-16*abs(sin(2*PI*t*2.6))`;
-
-    filters.push(
-      `[char]` +
-        `scale=` +
-        `w='iw*(1+0.02*sin(2*PI*t*2.6))':` +
-        `h='ih*(1+0.02*sin(2*PI*t*2.6))':` +
-        `eval=frame` +
-        `[moving]`
-    );
+      `H-h-20-${bob}`;
   }
 
-  /* -------------------------------------------------------
-     FALLBACK
-  ------------------------------------------------------- */
+  /* =======================================================
+     WALK
+  ======================================================= */
+
+  else if (
+    mode === "walking" ||
+    mode === "walk"
+  ) {
+    const travel =
+      `(-w-50)+((W+w+100)*(t/${duration}))`;
+
+    const bob =
+      `12*abs(sin(2*PI*t*2.3))`;
+
+    x =
+      travel;
+
+    y =
+      `H-h-20-${bob}`;
+  }
+
+  /* =======================================================
+     IDLE
+  ======================================================= */
 
   else {
     x =
-      `(W-w)/2` +
-      `+8*sin(2*PI*t*.7)`;
+      "(W-w)/2 + 5*sin(2*PI*t*0.6)";
 
     y =
-      `H-h-25` +
-      `+5*sin(2*PI*t*.8)`;
-
-    filters.push(
-      `[char]` +
-        `scale=` +
-        `w='iw*(1+0.01*sin(2*PI*t*1.2))':` +
-        `h='ih*(1+0.01*sin(2*PI*t*1.2))':` +
-        `eval=frame` +
-        `[moving]`
-    );
+      "H-h-20 + 3*sin(2*PI*t*0.8)";
   }
 
-  /* -------------------------------------------------------
-     COMPOSITE
-  ------------------------------------------------------- */
-
   filters.push(
-    `[bg][moving]` +
-      `overlay=` +
+    `[bg][character]overlay=` +
       `x='${x}':` +
       `y='${y}':` +
       `eval=frame:` +
-      `eof_action=repeat` +
-      `[final]`
+      `eof_action=repeat,` +
+      `format=yuv420p[final]`
   );
 
-  return filters.join(
-    ";"
-  );
+  return filters.join(";");
 }
 
 /* =========================================================
-   CHARACTER VIDEO
+   RENDER CHARACTER VIDEO
 ========================================================= */
 
 async function renderCharacterVideo(
@@ -1364,32 +1198,24 @@ async function renderCharacterVideo(
       );
 
     const animation =
-      String(
-        scene.animation ||
-          "talking"
-      )
-        .toLowerCase()
-        .trim();
+      scene.animation ||
+      "talking";
 
-    if (
-      !scene.characterUrl
-    ) {
+    if (!scene.characterUrl) {
       throw new Error(
-        "Character URL is missing."
+        "characterUrl is required"
       );
     }
 
-    if (
-      !scene.backgroundUrl
-    ) {
+    if (!scene.backgroundUrl) {
       throw new Error(
-        "Background URL is missing."
+        "backgroundUrl is required"
       );
     }
 
-    /* -------------------------------------------------------
-       DOWNLOAD BACKGROUND
-    ------------------------------------------------------- */
+    /*
+     * Background
+     */
 
     const backgroundPath =
       path.join(
@@ -1409,9 +1235,9 @@ async function renderCharacterVideo(
       backgroundPath
     );
 
-    /* -------------------------------------------------------
-       DOWNLOAD CHARACTER
-    ------------------------------------------------------- */
+    /*
+     * Character
+     */
 
     const characterPath =
       path.join(
@@ -1431,20 +1257,17 @@ async function renderCharacterVideo(
       characterPath
     );
 
-    /* -------------------------------------------------------
-       AUDIO
-    ------------------------------------------------------- */
+    /*
+     * Voice
+     */
 
-    let audioPath =
-      null;
+    let audioPath = null;
 
-    if (
-      scene.audioUrl
-    ) {
+    if (scene.audioUrl) {
       audioPath =
         path.join(
           tempDir,
-          `audio_${uuidv4()}.mp3`
+          `character_audio_${uuidv4()}.mp3`
         );
 
       tempFiles.push(
@@ -1457,23 +1280,27 @@ async function renderCharacterVideo(
       );
     }
 
-    /* -------------------------------------------------------
-       FFMPEG
-    ------------------------------------------------------- */
+    /*
+     * FFmpeg
+     */
 
     let command =
-      ffmpeg()
-        .input(
-          backgroundPath
-        )
+      ffmpeg();
+
+    command =
+      command
+        .input(backgroundPath)
         .inputOptions([
-          "-loop 1",
-        ])
-        .input(
-          characterPath
-        )
+          "-loop",
+          "1",
+        ]);
+
+    command =
+      command
+        .input(characterPath)
         .inputOptions([
-          "-loop 1",
+          "-loop",
+          "1",
         ]);
 
     if (audioPath) {
@@ -1489,6 +1316,16 @@ async function renderCharacterVideo(
         duration
       );
 
+    console.log(
+      "Character animation:",
+      animation
+    );
+
+    console.log(
+      "Character filter:",
+      filter
+    );
+
     command =
       command
         .complexFilter(
@@ -1499,53 +1336,32 @@ async function renderCharacterVideo(
           "libx264"
         )
         .outputOptions([
-          "-map",
-          "[final]",
-
           "-pix_fmt",
           "yuv420p",
-
           "-preset",
           "veryfast",
-
           "-crf",
           "23",
-
           "-r",
           "24",
-
-          "-t",
-          String(
-            duration
-          ),
-
-          "-movflags",
-          "+faststart",
-
           "-threads",
           "1",
+          "-movflags",
+          "+faststart",
+          "-t",
+          String(duration),
         ]);
 
     if (audioPath) {
       command =
         command
-          .audioCodec(
-            "aac"
-          )
-          .audioBitrate(
-            "128k"
-          )
+          .audioCodec("aac")
+          .audioBitrate("128k")
           .outputOptions([
-            "-map",
-            "2:a?",
-
             "-af",
             "apad",
-
             "-t",
-            String(
-              duration
-            ),
+            String(duration),
           ]);
     } else {
       command =
@@ -1555,20 +1371,14 @@ async function renderCharacterVideo(
     }
 
     await new Promise(
-      (
-        resolve,
-        reject
-      ) => {
+      (resolve, reject) => {
         command
           .on(
             "start",
-            (line) => {
+            (cmd) => {
               console.log(
-                "CHARACTER FFMPEG:"
-              );
-
-              console.log(
-                line
+                "Character FFmpeg:",
+                cmd
               );
             }
           )
@@ -1589,10 +1399,11 @@ async function renderCharacterVideo(
             "stderr",
             (line) => {
               if (
-                line?.trim()
+                line &&
+                line.trim()
               ) {
                 console.log(
-                  "Character:",
+                  "Character FFmpeg:",
                   line
                 );
               }
@@ -1609,9 +1420,7 @@ async function renderCharacterVideo(
             reject
           )
 
-          .save(
-            outputPath
-          );
+          .save(outputPath);
       }
     );
 
@@ -1621,7 +1430,7 @@ async function renderCharacterVideo(
       )
     ) {
       throw new Error(
-        "Character video was not created."
+        "Character video was not created"
       );
     }
 
@@ -1634,96 +1443,7 @@ async function renderCharacterVideo(
 }
 
 /* =========================================================
-   CONCAT
-========================================================= */
-
-async function concatSceneVideos(
-  scenePaths,
-  outputPath
-) {
-  const concatFile =
-    path.join(
-      tempDir,
-      `concat_${uuidv4()}.txt`
-    );
-
-  try {
-    const content =
-      scenePaths
-        .map(
-          (filePath) =>
-            `file '${filePath.replace(
-              /'/g,
-              "'\\''"
-            )}'`
-        )
-        .join("\n");
-
-    fs.writeFileSync(
-      concatFile,
-      content
-    );
-
-    await new Promise(
-      (
-        resolve,
-        reject
-      ) => {
-        ffmpeg()
-          .input(
-            concatFile
-          )
-          .inputOptions([
-            "-f concat",
-            "-safe 0",
-          ])
-          .outputOptions([
-            "-c copy",
-            "-movflags +faststart",
-          ])
-          .on(
-            "start",
-            (line) =>
-              console.log(
-                "CONCAT:",
-                line
-              )
-          )
-          .on(
-            "stderr",
-            (line) => {
-              if (
-                line?.trim()
-              ) {
-                console.log(
-                  "CONCAT:",
-                  line
-                );
-              }
-            }
-          )
-          .on(
-            "end",
-            resolve
-          )
-          .on(
-            "error",
-            reject
-          )
-          .save(
-            outputPath
-          );
-      }
-    );
-  } finally {
-    safeUnlink(
-      concatFile
-    );
-  }
-}
-
-/* =========================================================
-   CHARACTER VIDEO ENDPOINT
+   CHARACTER VIDEO
 ========================================================= */
 
 app.post(
@@ -1737,13 +1457,11 @@ app.post(
         !scene.characterUrl ||
         !scene.backgroundUrl
       ) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            error:
-              "characterUrl and backgroundUrl are required",
-          });
+        return res.status(400).json({
+          success: false,
+          error:
+            "characterUrl and backgroundUrl are required",
+        });
       }
 
       const filename =
@@ -1768,15 +1486,8 @@ app.post(
 
       res.json({
         success: true,
-
         videoUrl,
-
-        url:
-          videoUrl,
-
-        animation:
-          scene.animation ||
-          "talking",
+        url: videoUrl,
       });
     } catch (error) {
       console.error(
@@ -1797,10 +1508,95 @@ app.post(
    FINAL VIDEO
 ========================================================= */
 
+async function concatSceneVideos(
+  scenePaths,
+  outputPath
+) {
+  const concatFile =
+    path.join(
+      tempDir,
+      `concat_${uuidv4()}.txt`
+    );
+
+  try {
+    const lines =
+      scenePaths
+        .map(
+          (filePath) =>
+            `file '${filePath.replace(
+              /'/g,
+              "'\\''"
+            )}'`
+        )
+        .join("\n");
+
+    fs.writeFileSync(
+      concatFile,
+      lines
+    );
+
+    await new Promise(
+      (resolve, reject) => {
+        ffmpeg()
+          .input(concatFile)
+          .inputOptions([
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+          ])
+          .outputOptions([
+            "-c",
+            "copy",
+            "-movflags",
+            "+faststart",
+          ])
+          .on(
+            "start",
+            (cmd) => {
+              console.log(
+                "Concat FFmpeg:",
+                cmd
+              );
+            }
+          )
+          .on(
+            "stderr",
+            (line) => {
+              if (
+                line &&
+                line.trim()
+              ) {
+                console.log(
+                  "Concat FFmpeg:",
+                  line
+                );
+              }
+            }
+          )
+          .on(
+            "end",
+            resolve
+          )
+          .on(
+            "error",
+            reject
+          )
+          .save(outputPath);
+      }
+    );
+  } finally {
+    safeUnlink(
+      concatFile
+    );
+  }
+}
+
 app.post(
   "/api/generate-final-video",
   async (req, res) => {
-    const tempFiles = [];
+    const sceneVideoPaths =
+      [];
 
     try {
       const {
@@ -1808,18 +1604,14 @@ app.post(
       } = req.body;
 
       if (
-        !Array.isArray(
-          scenes
-        ) ||
-        !scenes.length
+        !Array.isArray(scenes) ||
+        scenes.length === 0
       ) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            error:
-              "scenes array is required",
-          });
+        return res.status(400).json({
+          success: false,
+          error:
+            "scenes array is required",
+        });
       }
 
       console.log(
@@ -1839,13 +1631,6 @@ app.post(
         "========================================"
       );
 
-      const sceneVideoPaths =
-        [];
-
-      /* -----------------------------------------------------
-         RENDER EVERY SCENE
-      ----------------------------------------------------- */
-
       for (
         let i = 0;
         i < scenes.length;
@@ -1860,103 +1645,67 @@ app.post(
             5
           );
 
-        let scenePath;
+        let outputPath;
 
-        console.log(
-          `Rendering scene ${
-            i + 1
-          }/${scenes.length}`
-        );
-
-        /* ---------------------------------------------------
-           CHARACTER MODE
-        --------------------------------------------------- */
+        /*
+         * CHARACTER
+         */
 
         if (
-          hasCharacterAnimation(
-            scene
-          )
+          scene.characterUrl &&
+          scene.backgroundUrl &&
+          scene.animation &&
+          scene.animation !==
+            "idle"
         ) {
-          console.log(
-            "MODE: CHARACTER"
-          );
+          const filename =
+            `character_scene_${uuidv4()}.mp4`;
 
-          console.log(
-            "Animation:",
-            scene.animation
-          );
-
-          scenePath =
+          outputPath =
             path.join(
               tempDir,
-              `character_scene_${uuidv4()}.mp4`
+              filename
             );
 
           await renderCharacterVideo(
-            {
-              ...scene,
-              duration,
-            },
-            scenePath
-          );
-
-          tempFiles.push(
-            scenePath
+            scene,
+            outputPath
           );
         }
 
-        /* ---------------------------------------------------
-           NORMAL MODE
-        --------------------------------------------------- */
+        /*
+         * NORMAL CINEMATIC
+         */
 
         else {
-          if (
-            !scene.imageUrl
-          ) {
+          if (!scene.imageUrl) {
             throw new Error(
-              `Scene ${
-                i + 1
-              } is missing imageUrl`
+              `Scene ${i + 1} has no imageUrl`
             );
           }
-
-          console.log(
-            "MODE: CINEMATIC"
-          );
 
           const imagePath =
             path.join(
               tempDir,
-              `image_${uuidv4()}${getExtensionFromUrl(
+              `scene_${uuidv4()}${getExtensionFromUrl(
                 scene.imageUrl,
                 ".jpg"
               )}`
             );
-
-          tempFiles.push(
-            imagePath
-          );
 
           await downloadFile(
             scene.imageUrl,
             imagePath
           );
 
-          let audioPath =
-            null;
+          let audioPath = null;
 
-          if (
-            scene.audioUrl
-          ) {
+          if (scene.audioUrl) {
             audioPath =
               path.join(
                 tempDir,
                 `audio_${uuidv4()}.mp3`
               );
-
-            tempFiles.push(
-              audioPath
-            );
 
             await downloadFile(
               scene.audioUrl,
@@ -1964,66 +1713,40 @@ app.post(
             );
           }
 
-          scenePath =
+          outputPath =
             path.join(
               tempDir,
-              `scene_${uuidv4()}.mp4`
+              `scene_video_${uuidv4()}.mp4`
             );
 
           await renderSceneVideo(
             imagePath,
             audioPath,
-            scenePath,
+            outputPath,
             duration
           );
 
-          tempFiles.push(
-            scenePath
-          );
-        }
-
-        if (
-          !fs.existsSync(
-            scenePath
-          )
-        ) {
-          throw new Error(
-            `Scene ${
-              i + 1
-            } video was not created`
-          );
-        }
-
-        const probe =
-          await probeVideo(
-            scenePath
+          safeUnlink(
+            imagePath
           );
 
-        const videoStreams =
-          probe.streams.filter(
-            (stream) =>
-              stream.codec_type ===
-              "video"
-          );
-
-        if (
-          !videoStreams.length
-        ) {
-          throw new Error(
-            `Scene ${
-              i + 1
-            } contains no video stream`
+          safeUnlink(
+            audioPath
           );
         }
 
         sceneVideoPaths.push(
-          scenePath
+          outputPath
+        );
+
+        console.log(
+          `Scene ${i + 1} completed`
         );
       }
 
-      /* -----------------------------------------------------
-         CONCAT
-      ----------------------------------------------------- */
+      /*
+       * FINAL FILE
+       */
 
       const finalFilename =
         `video_${uuidv4()}.mp4`;
@@ -2039,13 +1762,17 @@ app.post(
         finalPath
       );
 
+      /*
+       * VERIFY
+       */
+
       if (
         !fs.existsSync(
           finalPath
         )
       ) {
         throw new Error(
-          "Final video was not created."
+          "Final video was not created"
         );
       }
 
@@ -2061,15 +1788,15 @@ app.post(
 
       const videoStreams =
         probe.streams.filter(
-          (stream) =>
-            stream.codec_type ===
+          (s) =>
+            s.codec_type ===
             "video"
         );
 
       const audioStreams =
         probe.streams.filter(
-          (stream) =>
-            stream.codec_type ===
+          (s) =>
+            s.codec_type ===
             "audio"
         );
 
@@ -2088,22 +1815,21 @@ app.post(
       );
 
       console.log(
-        "URL:",
         videoUrl
       );
 
       console.log(
-        "SIZE:",
+        "Size:",
         stats.size
       );
 
       console.log(
-        "VIDEO STREAMS:",
+        "Video streams:",
         videoStreams.length
       );
 
       console.log(
-        "AUDIO STREAMS:",
+        "Audio streams:",
         audioStreams.length
       );
 
@@ -2116,8 +1842,7 @@ app.post(
 
         videoUrl,
 
-        url:
-          videoUrl,
+        url: videoUrl,
 
         finalVideo:
           videoUrl,
@@ -2133,7 +1858,10 @@ app.post(
 
         characterAnimation:
           scenes.some(
-            hasCharacterAnimation
+            (scene) =>
+              scene.characterUrl &&
+              scene.backgroundUrl &&
+              scene.animation
           ),
       });
     } catch (error) {
@@ -2144,12 +1872,11 @@ app.post(
 
       res.status(500).json({
         success: false,
-
         error:
           error.message,
       });
     } finally {
-      tempFiles.forEach(
+      sceneVideoPaths.forEach(
         safeUnlink
       );
     }
@@ -2157,55 +1884,33 @@ app.post(
 );
 
 /* =========================================================
-   LEGACY ENDPOINT
+   LEGACY GENERATE VIDEO
 ========================================================= */
 
 app.post(
   "/api/generate-video",
   async (req, res) => {
     try {
-      const {
-        scenes,
-      } = req.body;
+      const result =
+        req.body;
 
       if (
-        !Array.isArray(
-          scenes
-        ) ||
-        !scenes.length
+        result?.scenes
       ) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            error:
-              "scenes array is required",
-          });
+        req.body.scenes =
+          result.scenes;
       }
 
       /*
-       * Keep old frontend compatible.
+       * This route is kept for
+       * compatibility.
        */
 
-      const fakeReq = {
-        body: {
-          scenes,
-        },
-      };
-
-      req.body =
-        fakeReq.body;
-
-      /*
-       * We cannot internally invoke the
-       * Express handler easily here without
-       * duplication, so redirect.
-       */
-
-      res.redirect(
-        307,
-        "/api/generate-final-video"
-      );
+      res.status(410).json({
+        success: false,
+        error:
+          "Use /api/generate-final-video instead.",
+      });
     } catch (error) {
       res.status(500).json({
         success: false,
@@ -2217,44 +1922,19 @@ app.post(
 );
 
 /* =========================================================
-   OPTIONAL UPLOAD
-========================================================= */
-
-app.post(
-  "/api/upload",
-  async (
-    req,
-    res
-  ) => {
-    res.status(400).json({
-      success: false,
-
-      error:
-        "Manual uploads are disabled in the new AI workflow. Generate assets automatically from the editor.",
-    });
-  }
-);
-
-/* =========================================================
-   404
+   404 HANDLER
 ========================================================= */
 
 app.use(
-  (
-    req,
-    res
-  ) => {
+  (req, res) => {
     res.status(404).json({
       success: false,
-
       error:
-        "Route not found",
-
+        "Route not found.",
       method:
         req.method,
-
       path:
-        req.path,
+        req.originalUrl,
     });
   }
 );
@@ -2275,19 +1955,8 @@ app.use(
       error
     );
 
-    if (
-      res.headersSent
-    ) {
-      return next(
-        error
-      );
-    }
-
-    res.status(
-      error.status || 500
-    ).json({
+    res.status(500).json({
       success: false,
-
       error:
         error.message ||
         "Internal server error",
@@ -2296,119 +1965,43 @@ app.use(
 );
 
 /* =========================================================
-   SERVER
+   START
 ========================================================= */
 
-const server =
-  app.listen(
-    PORT,
-    "0.0.0.0",
-    () => {
-      console.log("");
-      console.log(
-        "========================================"
-      );
-      console.log(
-        "       AI VIDEO STUDIO SERVER"
-      );
-      console.log(
-        "========================================"
-      );
+app.listen(
+  PORT,
+  "0.0.0.0",
+  () => {
+    console.log(
+      "========================================"
+    );
 
-      console.log(
-        "PORT:",
-        PORT
-      );
+    console.log(
+      "AI VIDEO STUDIO SERVER STARTED"
+    );
 
-      console.log(
-        "SERVER:",
-        SERVER_URL
-      );
+    console.log(
+      "PORT:",
+      PORT
+    );
 
-      console.log(
-        "FFmpeg:",
-        ffmpegStatic
-          ? "OK"
-          : "MISSING"
-      );
+    console.log(
+      "SERVER:",
+      SERVER_URL
+    );
 
-      console.log(
-        "FFprobe:",
-        ffprobeStatic?.path
-          ? "OK"
-          : "MISSING"
-      );
+    console.log(
+      "CHARACTER GENERATION:",
+      "READY"
+    );
 
-      console.log(
-        "ElevenLabs:",
-        ELEVENLABS_API_KEY
-          ? "OK"
-          : "MISSING"
-      );
+    console.log(
+      "CHARACTER ANIMATION:",
+      "READY"
+    );
 
-      console.log(
-        "Pollinations:",
-        "OK"
-      );
-
-      console.log(
-        "Character generation:",
-        "AUTOMATIC"
-      );
-
-      console.log(
-        "Background generation:",
-        "AUTOMATIC"
-      );
-
-      console.log(
-        "Animation:",
-        "TALK / TALK + WALK"
-      );
-
-      console.log(
-        "========================================"
-      );
-    }
-  );
-
-/* =========================================================
-   SHUTDOWN
-========================================================= */
-
-function shutdown(
-  signal
-) {
-  console.log(
-    `${signal} received.`
-  );
-
-  server.close(
-    () => {
-      console.log(
-        "Server closed."
-      );
-
-      process.exit(0);
-    }
-  );
-
-  setTimeout(
-    () => {
-      process.exit(1);
-    },
-    10000
-  );
-}
-
-process.on(
-  "SIGTERM",
-  () =>
-    shutdown("SIGTERM")
-);
-
-process.on(
-  "SIGINT",
-  () =>
-    shutdown("SIGINT")
+    console.log(
+      "========================================"
+    );
+  }
 );
