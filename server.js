@@ -15,6 +15,10 @@ const ffprobeStatic = require("ffprobe-static");
 
 const app = express();
 
+/* =========================================================
+   CONFIG
+========================================================= */
+
 const PORT = process.env.PORT || 3000;
 
 const SERVER_URL =
@@ -72,18 +76,18 @@ const tempDir = path.join(uploadsDir, "temp");
    EXPRESS
 ========================================================= */
 
+const allowedOrigins = [
+  "https://ai-video-studio-542c9.web.app",
+  "https://ai-video-studio-542c9.firebaseapp.com",
+
+  "http://localhost:5173",
+  "http://localhost:5174",
+  "http://localhost:5175",
+];
+
 app.use(
   cors({
     origin: function (origin, callback) {
-      const allowedOrigins = [
-        "https://ai-video-studio-542c9.web.app",
-        "https://ai-video-studio-542c9.firebaseapp.com",
-
-        "http://localhost:5173",
-        "http://localhost:5174",
-        "http://localhost:5175",
-      ];
-
       if (!origin) {
         return callback(null, true);
       }
@@ -93,7 +97,6 @@ app.use(
       }
 
       console.log("Blocked CORS:", origin);
-
       return callback(null, false);
     },
 
@@ -142,41 +145,38 @@ app.use(
    MULTER
 ========================================================= */
 
-const storage =
-  multer.diskStorage({
-    destination: function (req, file, cb) {
-      const folder =
-        file.mimetype.startsWith("image/")
-          ? imagesDir
-          : file.mimetype.startsWith("audio/")
-          ? audioDir
-          : videosDir;
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const folder =
+      file.mimetype.startsWith("image/")
+        ? imagesDir
+        : file.mimetype.startsWith("audio/")
+        ? audioDir
+        : videosDir;
 
-      cb(null, folder);
-    },
+    cb(null, folder);
+  },
 
-    filename: function (req, file, cb) {
-      const extension =
-        path.extname(
-          file.originalname || ".bin"
-        );
+  filename: function (req, file, cb) {
+    const extension = path.extname(
+      file.originalname || ".bin"
+    );
 
-      cb(
-        null,
-        `${uuidv4()}${extension}`
-      );
-    },
-  });
+    cb(
+      null,
+      `${uuidv4()}${extension}`
+    );
+  },
+});
 
-const upload =
-  multer({
-    storage,
+const upload = multer({
+  storage,
 
-    limits: {
-      fileSize:
-        200 * 1024 * 1024,
-    },
-  });
+  limits: {
+    fileSize:
+      200 * 1024 * 1024,
+  },
+});
 
 /* =========================================================
    HELPERS
@@ -269,6 +269,9 @@ function downloadFile(
             timeout: 120000,
           },
           (response) => {
+            /*
+             * Redirect
+             */
             if (
               response.statusCode >= 300 &&
               response.statusCode < 400 &&
@@ -419,13 +422,42 @@ app.get("/", (req, res) => {
     success: true,
     message:
       "AI Video Studio Server is running",
+
     server: SERVER_URL,
+
     characterGeneration: true,
     characterAnimation: true,
+
+    endpoints: [
+      "/api/health",
+      "/api/test",
+      "/api/generate-image",
+      "/api/generate-character",
+      "/api/generate-background",
+      "/api/generate-voice",
+      "/api/generate-character-video",
+      "/api/generate-final-video",
+      "/api/upload",
+    ],
+
     timestamp:
       new Date().toISOString(),
   });
 });
+
+app.get(
+  "/api/test",
+  (req, res) => {
+    res.json({
+      success: true,
+      message:
+        "AI Video API is working",
+      server: SERVER_URL,
+      timestamp:
+        new Date().toISOString(),
+    });
+  }
+);
 
 app.get(
   "/api/health",
@@ -433,21 +465,24 @@ app.get(
     res.json({
       success: true,
       status: "healthy",
+
       server: SERVER_URL,
+
       ffmpeg:
         Boolean(ffmpegStatic),
+
       ffprobe:
         Boolean(
           ffprobeStatic?.path
         ),
+
       elevenlabs:
         Boolean(
           ELEVENLABS_API_KEY
         ),
-      characterGeneration:
-        true,
-      characterAnimation:
-        true,
+
+      characterGeneration: true,
+      characterAnimation: true,
     });
   }
 );
@@ -506,7 +541,7 @@ app.post(
           filename
         );
 
-      res.json({
+      return res.json({
         success: true,
         imageUrl,
         url: imageUrl,
@@ -517,7 +552,7 @@ app.post(
         error
       );
 
-      res.status(500).json({
+      return res.status(500).json({
         success: false,
         error:
           error.message,
@@ -527,7 +562,7 @@ app.post(
 );
 
 /* =========================================================
-   GENERATE CHARACTER
+   GENERATE CHARACTER IMAGE
 ========================================================= */
 
 app.post(
@@ -539,7 +574,7 @@ app.post(
         description,
         characterDescription,
         language,
-      } = req.body;
+      } = req.body || {};
 
       const characterText =
         characterDescription ||
@@ -549,16 +584,22 @@ app.post(
 
       const prompt =
         `Full body character design for ${characterText}. ` +
-        `The character must be completely visible from head to feet. ` +
+        `One single character only. ` +
+        `The complete character must be visible from head to feet. ` +
         `Centered composition. ` +
-        `Standing pose. ` +
+        `Standing neutral pose. ` +
         `Clear face. ` +
         `Clear arms and legs. ` +
-        `Clean simple solid green background. ` +
-        `No text. No watermark. ` +
+        `Simple solid bright green background. ` +
+        `No other people. ` +
+        `No animals. ` +
+        `No text. ` +
+        `No watermark. ` +
         `Photorealistic cinematic character. ` +
-        `Detailed face. Detailed clothing. ` +
+        `Detailed face. ` +
+        `Detailed clothing. ` +
         `Consistent single character. ` +
+        `Full body. ` +
         `16:9.`;
 
       console.log(
@@ -566,7 +607,17 @@ app.post(
       );
 
       console.log(
-        "AUTO CHARACTER GENERATION"
+        "GENERATE CHARACTER"
+      );
+
+      console.log(
+        "Character description:",
+        characterText
+      );
+
+      console.log(
+        "Language:",
+        language || "not specified"
       );
 
       console.log(
@@ -609,11 +660,22 @@ app.post(
           filename
         );
 
-      res.json({
+      console.log(
+        "Character created:",
+        characterUrl
+      );
+
+      return res.json({
         success: true,
+
         characterUrl,
+
         url: characterUrl,
+
+        imageUrl: characterUrl,
+
         prompt,
+
         type: "character",
       });
     } catch (error) {
@@ -622,7 +684,7 @@ app.post(
         error
       );
 
-      res.status(500).json({
+      return res.status(500).json({
         success: false,
         error:
           error.message,
@@ -643,7 +705,7 @@ app.post(
         idea,
         description,
         backgroundDescription,
-      } = req.body;
+      } = req.body || {};
 
       const backgroundText =
         backgroundDescription ||
@@ -653,29 +715,20 @@ app.post(
 
       const prompt =
         `Ultra realistic cinematic background environment for ${backgroundText}. ` +
-        `No people. No characters. No animals. ` +
+        `No people. ` +
+        `No characters. ` +
+        `No animals. ` +
         `Wide cinematic composition. ` +
         `Natural lighting. ` +
         `Detailed environment. ` +
         `Photorealistic. ` +
         `16:9. ` +
-        `No text. No watermark.`;
+        `No text. ` +
+        `No watermark.`;
 
       console.log(
-        "========================================"
-      );
-
-      console.log(
-        "AUTO BACKGROUND GENERATION"
-      );
-
-      console.log(
-        "Prompt:",
+        "GENERATE BACKGROUND:",
         prompt
-      );
-
-      console.log(
-        "========================================"
       );
 
       const encodedPrompt =
@@ -709,10 +762,11 @@ app.post(
           filename
         );
 
-      res.json({
+      return res.json({
         success: true,
         backgroundUrl,
         url: backgroundUrl,
+        imageUrl: backgroundUrl,
         prompt,
         type: "background",
       });
@@ -722,7 +776,7 @@ app.post(
         error
       );
 
-      res.status(500).json({
+      return res.status(500).json({
         success: false,
         error:
           error.message,
@@ -743,7 +797,7 @@ app.post(
         text,
         voiceId,
         modelId,
-      } = req.body;
+      } = req.body || {};
 
       if (!text) {
         return res.status(400).json({
@@ -794,9 +848,12 @@ app.post(
 
               voice_settings: {
                 stability: 0.5,
+
                 similarity_boost:
                   0.75,
+
                 style: 0.2,
+
                 use_speaker_boost:
                   true,
               },
@@ -844,10 +901,11 @@ app.post(
           filename
         );
 
-      res.json({
+      return res.json({
         success: true,
         audioUrl,
         url: audioUrl,
+        audio: audioUrl,
       });
     } catch (error) {
       console.error(
@@ -855,7 +913,7 @@ app.post(
         error
       );
 
-      res.status(500).json({
+      return res.status(500).json({
         success: false,
         error:
           error.message,
@@ -898,13 +956,29 @@ app.post(
           req.file.filename
         );
 
-      res.json({
+      return res.json({
         success: true,
+
         fileUrl,
+
         url: fileUrl,
+
+        filename:
+          req.file.filename,
+
+        mimetype:
+          req.file.mimetype,
+
+        size:
+          req.file.size,
       });
     } catch (error) {
-      res.status(500).json({
+      console.error(
+        "Upload error:",
+        error
+      );
+
+      return res.status(500).json({
         success: false,
         error:
           error.message,
@@ -929,7 +1003,8 @@ function renderSceneVideo(
         ffmpeg()
           .input(imagePath)
           .inputOptions([
-            "-loop 1",
+            "-loop",
+            "1",
           ]);
 
       if (audioPath) {
@@ -965,17 +1040,24 @@ function renderSceneVideo(
           .outputOptions([
             "-pix_fmt",
             "yuv420p",
+
             "-preset",
             "veryfast",
+
             "-crf",
             "23",
+
             "-r",
             "24",
+
             "-movflags",
             "+faststart",
+
             "-threads",
             "1",
-            `-t ${duration}`,
+
+            "-t",
+            String(duration),
           ]);
 
       if (audioPath) {
@@ -986,6 +1068,7 @@ function renderSceneVideo(
             .outputOptions([
               "-af",
               "apad",
+
               "-t",
               String(duration),
             ]);
@@ -997,12 +1080,15 @@ function renderSceneVideo(
       }
 
       command
-        .on("start", (cmd) => {
-          console.log(
-            "Scene FFmpeg:",
-            cmd
-          );
-        })
+        .on(
+          "start",
+          (cmd) => {
+            console.log(
+              "Scene FFmpeg:",
+              cmd
+            );
+          }
+        )
 
         .on(
           "progress",
@@ -1031,11 +1117,19 @@ function renderSceneVideo(
           }
         )
 
-        .on("end", () => {
-          resolve(outputPath);
-        })
+        .on(
+          "end",
+          () => {
+            resolve(
+              outputPath
+            );
+          }
+        )
 
-        .on("error", reject)
+        .on(
+          "error",
+          reject
+        )
 
         .save(outputPath);
     }
@@ -1043,7 +1137,24 @@ function renderSceneVideo(
 }
 
 /* =========================================================
-   CHARACTER ANIMATION
+   CHARACTER ANIMATION CHECK
+========================================================= */
+
+function hasCharacterAnimation(
+  scene
+) {
+  if (!scene) {
+    return false;
+  }
+
+  return Boolean(
+    scene.characterUrl &&
+    scene.backgroundUrl
+  );
+}
+
+/* =========================================================
+   CHARACTER ANIMATION FILTER
 ========================================================= */
 
 function buildCharacterFilter(
@@ -1052,32 +1163,36 @@ function buildCharacterFilter(
 ) {
   const mode =
     String(
-      animation || "talking"
+      animation || "idle"
     )
       .toLowerCase()
       .trim();
 
-  const filters = [];
-
   /*
-   * Background
+   * BACKGROUND
    */
 
+  const filters = [];
+
   filters.push(
-    `[0:v]scale=1280:720:force_original_aspect_ratio=decrease,` +
+    `[0:v]` +
+      `scale=1280:720:force_original_aspect_ratio=decrease,` +
       `pad=1280:720:(ow-iw)/2:(oh-ih)/2:color=black,` +
       `setsar=1[bg]`
   );
 
   /*
-   * Character.
+   * CHARACTER
    *
-   * We remove green background.
+   * The character is one image.
+   *
+   * Green background is removed.
    */
 
   filters.push(
-    `[1:v]scale=520:-1:force_original_aspect_ratio=decrease,` +
+    `[1:v]` +
       `format=rgba,` +
+      `scale=420:-1:force_original_aspect_ratio=decrease,` +
       `chromakey=0x00ff00:0.22:0.08,` +
       `setsar=1[character]`
   );
@@ -1089,29 +1204,112 @@ function buildCharacterFilter(
     "H-h-20";
 
   /* =======================================================
-     TALK
+     IDLE
   ======================================================= */
 
   if (
+    mode === "idle" ||
+    mode === "breathing"
+  ) {
+    x =
+      "(W-w)/2+10*sin(2*PI*t*0.55)";
+
+    y =
+      "H-h-20+5*sin(2*PI*t*0.9)";
+  }
+
+  /* =======================================================
+     TALKING
+  ======================================================= */
+
+  else if (
     mode === "talking" ||
     mode === "talk"
   ) {
     x =
-      "(W-w)/2 + 10*sin(2*PI*t*1.3)";
+      "(W-w)/2+8*sin(2*PI*t*1.8)";
 
     y =
-      "H-h-20 + 5*sin(2*PI*t*2.8)";
-
-    /*
-     * Stronger talking movement.
-     *
-     * The whole character slightly moves,
-     * simulating speaking/body reaction.
-     */
+      "H-h-20+8*sin(2*PI*t*3.0)";
   }
 
   /* =======================================================
-     TALK + WALK
+     WALKING
+  ======================================================= */
+
+  else if (
+    mode === "walking" ||
+    mode === "walk"
+  ) {
+    x =
+      `-w-40+(W+w+80)*(t/${duration})`;
+
+    y =
+      "H-h-20-14*abs(sin(2*PI*t*2.2))";
+  }
+
+  /* =======================================================
+     RUNNING
+  ======================================================= */
+
+  else if (
+    mode === "running" ||
+    mode === "run"
+  ) {
+    x =
+      `-w-40+(W+w+80)*(t/${duration})`;
+
+    y =
+      "H-h-20-22*abs(sin(2*PI*t*3.5))";
+  }
+
+  /* =======================================================
+     JUMPING
+  ======================================================= */
+
+  else if (
+    mode === "jumping" ||
+    mode === "jump"
+  ) {
+    x =
+      "(W-w)/2+30*sin(2*PI*t*0.9)";
+
+    y =
+      "H-h-20-260*abs(sin(2*PI*t*0.8))";
+  }
+
+  /* =======================================================
+     ATTACK
+  ======================================================= */
+
+  else if (
+    mode === "attacking" ||
+    mode === "attack"
+  ) {
+    x =
+      "(W-w)/2+180*pow(abs(sin(2*PI*t*0.8)),3)";
+
+    y =
+      "H-h-20-45*pow(abs(sin(2*PI*t*0.8)),3)";
+  }
+
+  /* =======================================================
+     DANCING
+  ======================================================= */
+
+  else if (
+    mode === "dancing" ||
+    mode === "dance"
+  ) {
+    x =
+      "(W-w)/2+55*sin(2*PI*t*1.3)";
+
+    y =
+      "H-h-20-35*abs(sin(2*PI*t*2.6))";
+  }
+
+  /* =======================================================
+     TALKING + WALKING
   ======================================================= */
 
   else if (
@@ -1119,57 +1317,28 @@ function buildCharacterFilter(
     mode === "talk-walk" ||
     mode === "talk_walk"
   ) {
-    const travel =
-      `(-w-50)+((W+w+100)*(${duration > 0 ? "t/" + duration : "0"}))`;
-
-    const bob =
-      `12*abs(sin(2*PI*t*2.3))`;
-
-    const sway =
-      `8*sin(2*PI*t*2.3)`;
-
     x =
-      `${travel}+${sway}`;
+      `-w-40+(W+w+80)*(t/${duration})+8*sin(2*PI*t*2.3)`;
 
     y =
-      `H-h-20-${bob}`;
+      "H-h-20-14*abs(sin(2*PI*t*2.3))";
   }
 
   /* =======================================================
-     WALK
-  ======================================================= */
-
-  else if (
-    mode === "walking" ||
-    mode === "walk"
-  ) {
-    const travel =
-      `(-w-50)+((W+w+100)*(t/${duration}))`;
-
-    const bob =
-      `12*abs(sin(2*PI*t*2.3))`;
-
-    x =
-      travel;
-
-    y =
-      `H-h-20-${bob}`;
-  }
-
-  /* =======================================================
-     IDLE
+     FALLBACK
   ======================================================= */
 
   else {
     x =
-      "(W-w)/2 + 5*sin(2*PI*t*0.6)";
+      "(W-w)/2+12*sin(2*PI*t*0.6)";
 
     y =
-      "H-h-20 + 3*sin(2*PI*t*0.8)";
+      "H-h-20+6*sin(2*PI*t*0.8)";
   }
 
   filters.push(
-    `[bg][character]overlay=` +
+    `[bg][character]` +
+      `overlay=` +
       `x='${x}':` +
       `y='${y}':` +
       `eval=frame:` +
@@ -1199,7 +1368,8 @@ async function renderCharacterVideo(
 
     const animation =
       scene.animation ||
-      "talking";
+      scene.animationType ||
+      "idle";
 
     if (!scene.characterUrl) {
       throw new Error(
@@ -1214,13 +1384,13 @@ async function renderCharacterVideo(
     }
 
     /*
-     * Background
+     * BACKGROUND
      */
 
     const backgroundPath =
       path.join(
         tempDir,
-        `bg_${uuidv4()}${getExtensionFromUrl(
+        `character_background_${uuidv4()}${getExtensionFromUrl(
           scene.backgroundUrl,
           ".jpg"
         )}`
@@ -1236,13 +1406,13 @@ async function renderCharacterVideo(
     );
 
     /*
-     * Character
+     * CHARACTER
      */
 
     const characterPath =
       path.join(
         tempDir,
-        `character_${uuidv4()}${getExtensionFromUrl(
+        `character_image_${uuidv4()}${getExtensionFromUrl(
           scene.characterUrl,
           ".jpg"
         )}`
@@ -1258,12 +1428,17 @@ async function renderCharacterVideo(
     );
 
     /*
-     * Voice
+     * AUDIO
      */
 
     let audioPath = null;
 
-    if (scene.audioUrl) {
+    const audioUrl =
+      scene.audioUrl ||
+      scene.voiceUrl ||
+      scene.audio;
+
+    if (audioUrl) {
       audioPath =
         path.join(
           tempDir,
@@ -1275,28 +1450,27 @@ async function renderCharacterVideo(
       );
 
       await downloadFile(
-        scene.audioUrl,
+        audioUrl,
         audioPath
       );
     }
 
     /*
-     * FFmpeg
+     * FFMPEG INPUTS
+     *
+     * Input 0 = background
+     * Input 1 = character
+     * Input 2 = audio
      */
 
     let command =
-      ffmpeg();
-
-    command =
-      command
+      ffmpeg()
         .input(backgroundPath)
         .inputOptions([
           "-loop",
           "1",
-        ]);
+        ])
 
-    command =
-      command
         .input(characterPath)
         .inputOptions([
           "-loop",
@@ -1317,13 +1491,45 @@ async function renderCharacterVideo(
       );
 
     console.log(
-      "Character animation:",
+      "========================================"
+    );
+
+    console.log(
+      "CHARACTER VIDEO"
+    );
+
+    console.log(
+      "Animation:",
       animation
     );
 
     console.log(
-      "Character filter:",
+      "Duration:",
+      duration
+    );
+
+    console.log(
+      "Character:",
+      scene.characterUrl
+    );
+
+    console.log(
+      "Background:",
+      scene.backgroundUrl
+    );
+
+    console.log(
+      "Audio:",
+      audioUrl || "none"
+    );
+
+    console.log(
+      "Filter:",
       filter
+    );
+
+    console.log(
+      "========================================"
     );
 
     command =
@@ -1332,22 +1538,30 @@ async function renderCharacterVideo(
           filter,
           "final"
         )
+
         .videoCodec(
           "libx264"
         )
+
         .outputOptions([
           "-pix_fmt",
           "yuv420p",
+
           "-preset",
           "veryfast",
+
           "-crf",
           "23",
+
           "-r",
           "24",
+
           "-threads",
           "1",
+
           "-movflags",
           "+faststart",
+
           "-t",
           String(duration),
         ]);
@@ -1357,9 +1571,11 @@ async function renderCharacterVideo(
         command
           .audioCodec("aac")
           .audioBitrate("128k")
+
           .outputOptions([
             "-af",
             "apad",
+
             "-t",
             String(duration),
           ]);
@@ -1373,6 +1589,7 @@ async function renderCharacterVideo(
     await new Promise(
       (resolve, reject) => {
         command
+
           .on(
             "start",
             (cmd) => {
@@ -1412,12 +1629,25 @@ async function renderCharacterVideo(
 
           .on(
             "end",
-            resolve
+            () => {
+              console.log(
+                "Character FFmpeg completed."
+              );
+
+              resolve();
+            }
           )
 
           .on(
             "error",
-            reject
+            (error) => {
+              console.error(
+                "Character FFmpeg error:",
+                error
+              );
+
+              reject(error);
+            }
           )
 
           .save(outputPath);
@@ -1434,6 +1664,11 @@ async function renderCharacterVideo(
       );
     }
 
+    console.log(
+      "Character video created:",
+      outputPath
+    );
+
     return outputPath;
   } finally {
     tempFiles.forEach(
@@ -1443,7 +1678,7 @@ async function renderCharacterVideo(
 }
 
 /* =========================================================
-   CHARACTER VIDEO
+   GENERATE CHARACTER VIDEO
 ========================================================= */
 
 app.post(
@@ -1459,6 +1694,7 @@ app.post(
       ) {
         return res.status(400).json({
           success: false,
+
           error:
             "characterUrl and backgroundUrl are required",
         });
@@ -1484,10 +1720,17 @@ app.post(
           filename
         );
 
-      res.json({
+      return res.json({
         success: true,
+
         videoUrl,
+
         url: videoUrl,
+
+        animation:
+          scene.animation ||
+          scene.animationType ||
+          "idle",
       });
     } catch (error) {
       console.error(
@@ -1495,7 +1738,7 @@ app.post(
         error
       );
 
-      res.status(500).json({
+      return res.status(500).json({
         success: false,
         error:
           error.message,
@@ -1505,7 +1748,24 @@ app.post(
 );
 
 /* =========================================================
-   FINAL VIDEO
+   ALIAS
+   /api/generate-character
+   NOTE:
+   This endpoint generates the CHARACTER IMAGE.
+========================================================= */
+
+/*
+ * The route /api/generate-character above is intentional.
+ *
+ * Your frontend previously called:
+ *
+ * POST /api/generate-character
+ *
+ * It must therefore exist on Bonto after deployment.
+ */
+
+/* =========================================================
+   CONCAT SCENE VIDEOS
 ========================================================= */
 
 async function concatSceneVideos(
@@ -1539,18 +1799,23 @@ async function concatSceneVideos(
       (resolve, reject) => {
         ffmpeg()
           .input(concatFile)
+
           .inputOptions([
             "-f",
             "concat",
+
             "-safe",
             "0",
           ])
+
           .outputOptions([
             "-c",
             "copy",
+
             "-movflags",
             "+faststart",
           ])
+
           .on(
             "start",
             (cmd) => {
@@ -1560,6 +1825,7 @@ async function concatSceneVideos(
               );
             }
           )
+
           .on(
             "stderr",
             (line) => {
@@ -1574,14 +1840,37 @@ async function concatSceneVideos(
               }
             }
           )
+
+          .on(
+            "progress",
+            (progress) => {
+              console.log(
+                "Concat progress:",
+                calculateProgress(
+                  progress.timemark,
+                  1
+                ),
+                "%"
+              );
+            }
+          )
+
           .on(
             "end",
-            resolve
+            () => {
+              console.log(
+                "Final concat completed."
+              );
+
+              resolve();
+            }
           )
+
           .on(
             "error",
             reject
           )
+
           .save(outputPath);
       }
     );
@@ -1592,6 +1881,10 @@ async function concatSceneVideos(
   }
 }
 
+/* =========================================================
+   FINAL VIDEO
+========================================================= */
+
 app.post(
   "/api/generate-final-video",
   async (req, res) => {
@@ -1601,7 +1894,7 @@ app.post(
     try {
       const {
         scenes,
-      } = req.body;
+      } = req.body || {};
 
       if (
         !Array.isArray(scenes) ||
@@ -1637,7 +1930,7 @@ app.post(
         i++
       ) {
         const scene =
-          scenes[i];
+          scenes[i] || {};
 
         const duration =
           parseDuration(
@@ -1648,15 +1941,25 @@ app.post(
         let outputPath;
 
         /*
-         * CHARACTER
+         * =====================================================
+         * CHARACTER SCENE
+         *
+         * IMPORTANT:
+         * We no longer require animation !== "idle".
+         *
+         * Any scene containing:
+         *
+         * characterUrl
+         * backgroundUrl
+         *
+         * uses the character renderer.
+         * =====================================================
          */
 
         if (
-          scene.characterUrl &&
-          scene.backgroundUrl &&
-          scene.animation &&
-          scene.animation !==
-            "idle"
+          hasCharacterAnimation(
+            scene
+          )
         ) {
           const filename =
             `character_scene_${uuidv4()}.mp4`;
@@ -1667,14 +1970,36 @@ app.post(
               filename
             );
 
+          console.log(
+            `Scene ${i + 1}: CHARACTER`
+          );
+
+          console.log(
+            "Animation:",
+            scene.animation ||
+              scene.animationType ||
+              "idle"
+          );
+
           await renderCharacterVideo(
-            scene,
+            {
+              ...scene,
+
+              animation:
+                scene.animation ||
+                scene.animationType ||
+                "idle",
+
+              duration,
+            },
             outputPath
           );
         }
 
         /*
-         * NORMAL CINEMATIC
+         * =====================================================
+         * NORMAL CINEMATIC SCENE
+         * =====================================================
          */
 
         else {
@@ -1683,6 +2008,10 @@ app.post(
               `Scene ${i + 1} has no imageUrl`
             );
           }
+
+          console.log(
+            `Scene ${i + 1}: CINEMATIC`
+          );
 
           const imagePath =
             path.join(
@@ -1693,45 +2022,62 @@ app.post(
               )}`
             );
 
-          await downloadFile(
-            scene.imageUrl,
-            imagePath
-          );
-
           let audioPath = null;
 
-          if (scene.audioUrl) {
-            audioPath =
+          try {
+            await downloadFile(
+              scene.imageUrl,
+              imagePath
+            );
+
+            const audioUrl =
+              scene.audioUrl ||
+              scene.voiceUrl ||
+              scene.audio;
+
+            if (audioUrl) {
+              audioPath =
+                path.join(
+                  tempDir,
+                  `audio_${uuidv4()}.mp3`
+                );
+
+              await downloadFile(
+                audioUrl,
+                audioPath
+              );
+            }
+
+            outputPath =
               path.join(
                 tempDir,
-                `audio_${uuidv4()}.mp3`
+                `scene_video_${uuidv4()}.mp4`
               );
 
-            await downloadFile(
-              scene.audioUrl,
+            await renderSceneVideo(
+              imagePath,
+              audioPath,
+              outputPath,
+              duration
+            );
+          } finally {
+            safeUnlink(
+              imagePath
+            );
+
+            safeUnlink(
               audioPath
             );
           }
+        }
 
-          outputPath =
-            path.join(
-              tempDir,
-              `scene_video_${uuidv4()}.mp4`
-            );
-
-          await renderSceneVideo(
-            imagePath,
-            audioPath,
-            outputPath,
-            duration
-          );
-
-          safeUnlink(
-            imagePath
-          );
-
-          safeUnlink(
-            audioPath
+        if (
+          !fs.existsSync(
+            outputPath
+          )
+        ) {
+          throw new Error(
+            `Scene ${i + 1} video was not created`
           );
         }
 
@@ -1745,7 +2091,9 @@ app.post(
       }
 
       /*
+       * =====================================================
        * FINAL FILE
+       * =====================================================
        */
 
       const finalFilename =
@@ -1763,7 +2111,9 @@ app.post(
       );
 
       /*
+       * =====================================================
        * VERIFY
+       * =====================================================
        */
 
       if (
@@ -1788,15 +2138,15 @@ app.post(
 
       const videoStreams =
         probe.streams.filter(
-          (s) =>
-            s.codec_type ===
+          (stream) =>
+            stream.codec_type ===
             "video"
         );
 
       const audioStreams =
         probe.streams.filter(
-          (s) =>
-            s.codec_type ===
+          (stream) =>
+            stream.codec_type ===
             "audio"
         );
 
@@ -1815,11 +2165,12 @@ app.post(
       );
 
       console.log(
+        "Video URL:",
         videoUrl
       );
 
       console.log(
-        "Size:",
+        "File size:",
         stats.size
       );
 
@@ -1837,7 +2188,7 @@ app.post(
         "========================================"
       );
 
-      res.json({
+      return res.json({
         success: true,
 
         videoUrl,
@@ -1858,19 +2209,27 @@ app.post(
 
         characterAnimation:
           scenes.some(
-            (scene) =>
-              scene.characterUrl &&
-              scene.backgroundUrl &&
-              scene.animation
+            hasCharacterAnimation
           ),
       });
     } catch (error) {
       console.error(
-        "FINAL VIDEO ERROR:",
+        "========================================"
+      );
+
+      console.error(
+        "FINAL VIDEO ERROR:"
+      );
+
+      console.error(
         error
       );
 
-      res.status(500).json({
+      console.error(
+        "========================================"
+      );
+
+      return res.status(500).json({
         success: false,
         error:
           error.message,
@@ -1890,28 +2249,56 @@ app.post(
 app.post(
   "/api/generate-video",
   async (req, res) => {
+    return res.status(410).json({
+      success: false,
+
+      error:
+        "Use /api/generate-final-video instead.",
+    });
+  }
+);
+
+/* =========================================================
+   DOWNLOAD VIDEO
+========================================================= */
+
+app.get(
+  "/api/download-video/:filename",
+  (req, res) => {
     try {
-      const result =
-        req.body;
+      const filename =
+        path.basename(
+          req.params.filename
+        );
+
+      const filePath =
+        path.join(
+          videosDir,
+          filename
+        );
 
       if (
-        result?.scenes
+        !fs.existsSync(
+          filePath
+        )
       ) {
-        req.body.scenes =
-          result.scenes;
+        return res.status(404).json({
+          success: false,
+          error:
+            "Video not found",
+        });
       }
 
-      /*
-       * This route is kept for
-       * compatibility.
-       */
-
-      res.status(410).json({
-        success: false,
-        error:
-          "Use /api/generate-final-video instead.",
-      });
+      res.download(
+        filePath,
+        filename
+      );
     } catch (error) {
+      console.error(
+        "Download error:",
+        error
+      );
+
       res.status(500).json({
         success: false,
         error:
@@ -1922,17 +2309,20 @@ app.post(
 );
 
 /* =========================================================
-   404 HANDLER
+   404
 ========================================================= */
 
 app.use(
   (req, res) => {
     res.status(404).json({
       success: false,
+
       error:
         "Route not found.",
+
       method:
         req.method,
+
       path:
         req.originalUrl,
     });
@@ -1957,6 +2347,7 @@ app.use(
 
     res.status(500).json({
       success: false,
+
       error:
         error.message ||
         "Internal server error",
@@ -1965,7 +2356,7 @@ app.use(
 );
 
 /* =========================================================
-   START
+   START SERVER
 ========================================================= */
 
 app.listen(
@@ -1991,13 +2382,11 @@ app.listen(
     );
 
     console.log(
-      "CHARACTER GENERATION:",
-      "READY"
+      "CHARACTER GENERATION: READY"
     );
 
     console.log(
-      "CHARACTER ANIMATION:",
-      "READY"
+      "CHARACTER ANIMATION: READY"
     );
 
     console.log(
